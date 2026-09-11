@@ -5,6 +5,7 @@
 
 #include <petscvec.h>
 #include "FVM/config.h"
+#include "FVM/FVMException.hpp"
 #include "FVM/Matrix.hpp"
 #include "FVM/Solvers/MILU_prova.hpp"
 
@@ -50,4 +51,23 @@ void MILU_PROVA::Invert(Matrix *A, Vec *b, Vec *x)
     KSPSetFromOptions(this->ksp);
 
     this->errorcode = KSPSolve(this->ksp, *b, *x);
+
+    // KSPSolve returns successfully even when the iteration failed to converge,
+    // so the solution must be validated explicitly. Without this check a
+    // diverged solve silently propagates a non-solution into the next timestep.
+    KSPConvergedReason reason;
+    KSPGetConvergedReason(this->ksp, &reason);
+
+    if (reason < 0)
+    {
+        PetscInt its;
+        KSPGetIterationNumber(this->ksp, &its);
+
+        const char *reasonName = KSPConvergedReasons[reason];
+
+        throw FVMException(
+            "MILU_PROVA: linear solve did not converge after %d iterations "
+            "(KSPConvergedReason %d: %s).",
+            (int)its, (int)reason, reasonName);
+    }
 }
