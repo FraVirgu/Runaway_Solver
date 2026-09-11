@@ -45,15 +45,9 @@ MILU_PROVA::~MILU_PROVA()
  */
 void MILU_PROVA::Invert(Matrix *A, Vec *b, Vec *x)
 {
-    PC pc;
-
     KSPSetOperators(this->ksp, A->mat(), A->mat());
 
-    // Set direct LU factorization
-    KSPGetPC(this->ksp, &pc);
-    PCSetType(pc, PCLU);
-    KSPSetType(this->ksp, KSPPREONLY);
+    KSPSetFromOptions(this->ksp);
 
-    // Solve
     this->errorcode = KSPSolve(this->ksp, *b, *x);
 }
