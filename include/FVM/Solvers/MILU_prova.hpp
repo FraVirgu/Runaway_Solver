@@ -11,9 +11,10 @@ namespace DREAM::FVM
     {
     private:
         len_t xn;
+        len_t Nf;
 
     public:
-        MILU_PROVA(const len_t);
+        MILU_PROVA(const len_t, len_t Nf);
         ~MILU_PROVA();
 
         virtual void Invert(Matrix *, Vec *, Vec *) override;

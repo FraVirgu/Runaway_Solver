@@ -15,10 +15,11 @@ using namespace DREAM::FVM;
  *
  * n: Number of elements in solution vector.
  */
-MILU_PROVA::MILU_PROVA(const len_t n)
+MILU_PROVA::MILU_PROVA(const len_t n, len_t Nf)
 {
     KSPCreate(PETSC_COMM_WORLD, &this->ksp);
     this->xn = n;
+    this->Nf = Nf;
 }
 
 /**
