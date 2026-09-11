@@ -3,4 +3,4 @@ PETSC_OPTIONS="-ksp_type fgmres -pc_type ilu -pc_factor_levels 0 -ksp_rtol 1e-12
 
 
 
-PETSC_OPTIONS="-ksp_type preonly -pc_type lu" ./dreami ./dream_settings.h5 2>&1 | tee ilu.log cp output.h5 output_lu.h5
+PETSC_OPTIONS="-ksp_type preonly -pc_type lu" ./dreami ./dream_settings.h5 2>&1 | tee ilu.log && cp output.h5 output_lu.h5
