@@ -1,2 +1,2 @@
 cp fvm/CMakeLists.txt ../DREAM/fvm
-cp py/Settings/Solver.py ../DREAM/Settings/
+cp py/Settings/Solver.py ../DREAM/py/DREAM/Settings/
