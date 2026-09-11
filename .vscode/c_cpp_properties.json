@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/../DREAM/**",
+                "${workspaceFolder}/../DREAM/include/**",
+                "${workspaceFolder}/include/**",
+                "/home/francesco-virgulti/Pets_Installation/petsc/include",
+                "/home/francesco-virgulti/Pets_Installation/petsc/arch-linux-c-debug/include",
+                "/usr/lib/x86_64-linux-gnu/openmpi/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-clang-x64"
+        }
+    ],
+    "version": 4
+}
