@@ -472,7 +472,7 @@ FVM::MatrixInverter *Solver::ConstructLinearSolver(const len_t N, enum OptionCon
     else if (ls == OptionConstants::LINEAR_SOLVER_LU)
         return new FVM::MILU(N);
     else if (ls == OptionConstants::LINEAR_SOLVER_LU_PROVA)
-        return new FVM::MILU_PROVA(N, this->Nf);
+        return new FVM::MILU_PROVA(N, this->Nhot, this->Nre);
     else if (ls == OptionConstants::LINEAR_SOLVER_MKL)
     {
 #ifdef PETSC_HAVE_MKL_PARDISO

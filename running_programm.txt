@@ -1,26 +1,24 @@
-ILU + ksp_gmres_restart
+1. Direct LU, whole system
+PETSC_OPTIONS="-dream_split none -ksp_type preonly -pc_type lu" \
+  mpirun -n 1 ./dreami ./dream_settings.h5
 
-PETSC_OPTIONS="-ksp_type fgmres -pc_type ilu -pc_factor_levels 0 -ksp_norm_type unpreconditioned -ksp_rtol 1e-12 -ksp_atol 1e-50 -ksp_max_it 1000 -ksp_converged_reason" \
-  mpirun -n 1 ./dreami ./dream_settings.h5 2>&1 | tee ilu.log && cp output.h5 output_ilu_gmres.h5
+2. GMRES + ILU, whole system
+PETSC_OPTIONS="-dream_split none -pc_type ilu -ksp_converged_reason" \
+  mpirun -n 1 ./dreami ./dream_settings.h5
 
+3. LU on fluid, ILU on kinetic
+PETSC_OPTIONS="-dream_split kinetic -ksp_converged_reason" \
+  mpirun -n 1 ./dreami ./dream_settings.h5
 
+4. LU on fluid, ILU on f_re, AMG on f_hot — the default
+PETSC_OPTIONS="-dream_split populations -ksp_converged_reason" \
+  mpirun -n 1 ./dreami ./dream_settings.h5
 
-DIRECT SOLVER
-PETSC_OPTIONS="-ksp_type preonly -pc_type lu" mpirun -n 1 ./dreami ./dream_settings.h5 2>&1 | tee ilu.log && cp output.h5 output_lu.h5
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+5. LU on fluid, AMG on both kinetic blocks
+PETSC_OPTIONS="-dream_split populations \
+  -fieldsplit_fre_pc_type hypre -fieldsplit_fre_pc_hypre_type boomeramg \
+  -ksp_converged_reason" \
+  mpirun -n 1 ./dreami ./dream_settings.h5
 
 
 conda Environment

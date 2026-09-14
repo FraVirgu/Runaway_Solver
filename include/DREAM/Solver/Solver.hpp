@@ -80,7 +80,8 @@ namespace DREAM
         SPIHandler *SPI;
         BootstrapCurrent *bootstrap = nullptr;
 
-        len_t Nf;
+        len_t Nhot;
+        len_t Nre;
 
         /*FVM::DurationTimer
             timerTot, timerCqh, timerREFluid, timerRebuildTerms;*/

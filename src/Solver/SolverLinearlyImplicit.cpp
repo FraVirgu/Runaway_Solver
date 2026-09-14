@@ -72,35 +72,47 @@ void SolverLinearlyImplicit::initialize_internal(
 {
     this->matrix = new FVM::BlockMatrix();
 
-    std::vector<len_t> kinetic, fluid;
+    std::vector<len_t> fhot, fre, fluid;
     for (len_t id : nontrivial_unknowns)
     {
         const std::string &nm = unknowns->GetUnknown(id)->GetName();
-        if (nm == OptionConstants::UQTY_F_HOT || nm == OptionConstants::UQTY_F_RE)
-            kinetic.push_back(id);
+        if (nm == OptionConstants::UQTY_F_HOT)
+            fhot.push_back(id);
+        else if (nm == OptionConstants::UQTY_F_RE)
+            fre.push_back(id);
         else
             fluid.push_back(id);
     }
-    // f-blocks first  →  offsets [0, N_f), fluid → [N_f, N)
-    std::vector<len_t> ordered = kinetic;
+
+    // Ordered so that the assembled matrix has f_hot in rows [0, Nhot),
+    // f_re in [Nhot, Nhot+Nre) and the fluid quantities thereafter. The
+    // fieldsplit index sets are strides over these ranges.
+    std::vector<len_t> ordered = fhot;
+    ordered.insert(ordered.end(), fre.begin(), fre.end());
     ordered.insert(ordered.end(), fluid.begin(), fluid.end());
 
     for (len_t id : ordered)
     {
         UnknownQuantityEquation *eqn = this->unknown_equations->at(id);
-
         unknownToMatrixMapping[id] =
             matrix->CreateSubEquation(eqn->NumberOfElements(), eqn->NumberOfNonZeros(), id);
     }
 
     matrix->ConstructSystem();
-    this->Nf = kinetic.size();
-    // Select linear solver
+
+    // Row counts, not quantity counts.
+    this->Nhot = 0;
+    for (len_t id : fhot)
+        this->Nhot += this->unknown_equations->at(id)->NumberOfElements();
+
+    this->Nre = 0;
+    for (len_t id : fre)
+        this->Nre += this->unknown_equations->at(id)->NumberOfElements();
+
     this->SelectLinearSolver(size);
 
     VecCreateSeq(PETSC_COMM_WORLD, size, &this->petsc_S);
 }
-
 /**
  * Set the initial guess for the linear solver.
  *
