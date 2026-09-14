@@ -20,6 +20,10 @@ PETSC_OPTIONS="-dream_split populations \
   -ksp_converged_reason" \
   mpirun -n 1 ./dreami ./dream_settings.h5
 
+6. AMG, whole system
+PETSC_OPTIONS="-dream_split none -pc_type hypre -pc_hypre_type boomeramg -ksp_converged_reason" \
+  mpirun -n 1 ./dreami ./dream_settings.h5
+
 
 conda Environment
 cd /home/francesco-virgulti/Desktop/DREAM/build
