@@ -8,3 +8,21 @@ PETSC_OPTIONS="-ksp_type fgmres -pc_type ilu -pc_factor_levels 0 -ksp_norm_type 
 DIRECT SOLVER
 PETSC_OPTIONS="-ksp_type preonly -pc_type lu" mpirun -n 1 ./dreami ./dream_settings.h5 2>&1 | tee ilu.log && cp output.h5 output_lu.h5
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+conda Environment
+cd /home/francesco-virgulti/Desktop/DREAM/build
+env LD_LIBRARY_PATH="/home/francesco-virgulti/Desktop/Masked_ROM/hazmath/lib:/usr/local/cuda/lib64" make

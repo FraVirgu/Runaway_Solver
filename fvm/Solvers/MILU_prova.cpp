@@ -46,8 +46,37 @@ MILU_PROVA::~MILU_PROVA()
  */
 void MILU_PROVA::Invert(Matrix *A, Vec *b, Vec *x)
 {
+    PC pc;
+    IS is_kinetic, is_fluid;
+
+    PetscInt Nf = this->Nf; // f_hot + f_re
+    PetscInt Ntot;
+    VecGetSize(*b, &Ntot);
+
+    ISCreateStride(PETSC_COMM_WORLD, Nf, 0, 1, &is_kinetic);
+    ISCreateStride(PETSC_COMM_WORLD, Ntot - Nf, Nf, 1, &is_fluid);
+
     KSPSetOperators(this->ksp, A->mat(), A->mat());
 
+    // Flexible GMRES preconditioned by ILU(0). FGMRES rather than GMRES so
+    // that the preconditioner may itself iterate (needed if ILU is later
+    // replaced by a nested solve, e.g. fieldsplit or multigrid).
+    KSPSetType(this->ksp, KSPFGMRES);
+
+    KSPGetPC(this->ksp, &pc);
+    PCSetType(pc, PCILU);
+    PCFactorSetLevels(pc, 0);
+
+    // Convergence is tested on the unpreconditioned residual: with an
+    // ill-conditioned operator the preconditioned norm is optimistic and can
+    // report convergence well before the true residual has been reduced.
+    KSPSetNormType(this->ksp, KSP_NORM_UNPRECONDITIONED);
+
+    // rtol is set an order above the attainable floor, kappa(A)*eps_mach.
+    KSPSetTolerances(this->ksp, 1e-8, 1e-50, PETSC_DEFAULT, 500);
+
+    // Applied last, so that PETSC_OPTIONS can still override the above when
+    // experimenting with alternative solvers and preconditioners.
     KSPSetFromOptions(this->ksp);
 
     this->errorcode = KSPSolve(this->ksp, *b, *x);
@@ -70,4 +99,7 @@ void MILU_PROVA::Invert(Matrix *A, Vec *b, Vec *x)
             "(KSPConvergedReason %d: %s).",
             (int)its, (int)reason, reasonName);
     }
+
+    ISDestroy(&is_kinetic);
+    ISDestroy(&is_fluid);
 }
