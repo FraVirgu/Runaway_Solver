@@ -8,7 +8,7 @@ set(dream_core
     "${PROJECT_SOURCE_DIR}/src/Atomics/nistdata_ionization.cpp"
     "${PROJECT_SOURCE_DIR}/src/Constants.cpp"
     "${PROJECT_SOURCE_DIR}/src/ConvergenceChecker.cpp"
-    "${PROJECT_SOURCE_DIR}/src/DiagonalPreconditioner.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/DiagonalPreconditioner.cpp"
     "${PROJECT_SOURCE_DIR}/src/EquationSystem/EquationSystem.cpp"
     "${PROJECT_SOURCE_DIR}/src/EquationSystem/Info.cpp"
     "${PROJECT_SOURCE_DIR}/src/EquationSystem/Save.cpp"
@@ -215,7 +215,7 @@ set(dream_solvers
 
 
 add_library(dream STATIC ${dream_core} ${dream_settings} ${dream_solvers} ${dream_equations} ${dream_equation_headers} ${dream_headers})
-target_include_directories(dream PUBLIC "${PROJECT_BINARY_DIR}/include" "${PROJECT_SOURCE_DIR}/include")
+target_include_directories(dream PUBLIC "${PROJECT_BINARY_DIR}/include" "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include" "${PROJECT_SOURCE_DIR}/include")
 target_link_libraries(dream PUBLIC fvm)
 
 
