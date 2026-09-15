@@ -193,14 +193,34 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         if (!extiter_conv)
             unknowns->RestoreSolution(this->nontrivial_unknowns);
 
+        PetscMPIInt dbg_rank, dbg_size;
+        MPI_Comm_rank(PETSC_COMM_WORLD, &dbg_rank);
+        MPI_Comm_size(PETSC_COMM_WORLD, &dbg_size);
+        {
+            PetscInt r0, r1, mrs, mre;
+            VecGetOwnershipRange(petsc_S, &r0, &r1);
+            MatGetOwnershipRange(matrix->mat(), &mrs, &mre);
+            MatType mtype;
+            MatGetType(matrix->mat(), &mtype);
+            printf("[%d/%d] STEP %llu iter %llu | matrix_size=%llu | vec rows [%d,%d) | mat rows [%d,%d) | mat type=%s\n",
+                   dbg_rank, dbg_size, (unsigned long long)this->nTimeStep,
+                   (unsigned long long)iter, (unsigned long long)matrix_size,
+                   (int)r0, (int)r1, (int)mrs, (int)mre, mtype);
+            fflush(stdout);
+        }
+
+        printf("[%d] -> RebuildTerms\n", dbg_rank); fflush(stdout);
         this->timeKeeper->StartTimer(timerRebuild);
         RebuildTerms(t, dt);
         this->timeKeeper->StopTimer(timerRebuild);
+        printf("[%d] <- RebuildTerms OK\n", dbg_rank); fflush(stdout);
 
         real_t *S = new real_t[matrix_size];
 
+        printf("[%d] -> BuildMatrix\n", dbg_rank); fflush(stdout);
         this->timeKeeper->StartTimer(timerMatrix);
         BuildMatrix(t, dt, matrix, S);
+        printf("[%d] <- BuildMatrix OK\n", dbg_rank); fflush(stdout);
 
         // Negate vector
         // We do this since in DREAM, we write the equation as
@@ -223,22 +243,30 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
 
         this->timeKeeper->StopTimer(timerMatrix);
 
+        printf("[%d] -> SaveDebugInfo\n", dbg_rank); fflush(stdout);
         this->SaveDebugInfo(this->nTimeStep, matrix, S);
+        printf("[%d] <- SaveDebugInfo OK\n", dbg_rank); fflush(stdout);
 
         VecRestoreArray(petsc_S, &Sloc);
 
         // Apply preconditioner (if enabled)
+        printf("[%d] -> Precondition\n", dbg_rank); fflush(stdout);
         this->Precondition(matrix, petsc_S);
+        printf("[%d] <- Precondition OK\n", dbg_rank); fflush(stdout);
 
+        printf("[%d] -> Invert\n", dbg_rank); fflush(stdout);
         this->timeKeeper->StartTimer(timerInvert);
         inverter->Invert(matrix, &petsc_S, &petsc_S);
         this->timeKeeper->StopTimer(timerInvert);
+        printf("[%d] <- Invert OK\n", dbg_rank); fflush(stdout);
 
         // Undo preconditioner (if enabled)
         this->UnPrecondition(petsc_S);
 
         // Store solution
+        printf("[%d] -> Store\n", dbg_rank); fflush(stdout);
         unknowns->Store(this->nontrivial_unknowns, petsc_S);
+        printf("[%d] <- Store OK\n", dbg_rank); fflush(stdout);
 
         // Call external iterator (if enabled)
         if (this->extiter != nullptr)
