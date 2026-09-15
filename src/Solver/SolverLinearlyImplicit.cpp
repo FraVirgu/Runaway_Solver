@@ -70,6 +70,8 @@ SolverLinearlyImplicit::~SolverLinearlyImplicit()
 void SolverLinearlyImplicit::initialize_internal(
     const len_t size, std::vector<len_t> &)
 {
+
+    cout << "Fino a qua ci arriva" << endl;
     this->matrix = new FVM::BlockMatrix();
 
     std::vector<len_t> fhot, fre, fluid;
@@ -96,9 +98,41 @@ void SolverLinearlyImplicit::initialize_internal(
         UnknownQuantityEquation *eqn = this->unknown_equations->at(id);
         unknownToMatrixMapping[id] =
             matrix->CreateSubEquation(eqn->NumberOfElements(), eqn->NumberOfNonZeros(), id);
+
+        /*
+
+        NumberOfElements() — how many rows this quantity occupies. For f_hot on a 3D grid that's nr × np1 × np2; for a fluid quantity it's just nr.
+        NumberOfNonZeros() — an estimate of non-zeros per row in this quantity's block row. This is purely a preallocation hint, not a constraint.
+
+        CreateSubEquation:
+        se.offset = this->next_subindex;   // where this block starts
+        this->subeqs.push_back(se);        // this is the part of the GLOBAL matrix that we return
+        this->next_subindex += n;          // bump the running cursor
+        return (this->subeqs.size()-1);    // the block's index    // the part of the GLOBAL matrix above
+
+
+
+        unknownToMatrixMapping[id] therefore translates DREAM unknown ID → block index
+
+        */
     }
 
     matrix->ConstructSystem();
+    /*
+    PetscInt mSize = this->next_subindex;         // total rows = total cols
+    PetscInt *nnz = new PetscInt[mSize];
+    for (struct _subeq& s : this->subeqs) {
+        PetscInt snnz = s.nnz;
+        if (snnz > mSize) snnz = mSize;           // clamp
+        for (PetscInt i = 0; i < s.n; i++)
+            nnz[s.offset + i] = snnz;             // fan out per-block → per-row
+    }
+    this->Construct(mSize, mSize, 0, nnz);
+    delete [] nnz;
+
+
+
+    */
 
     // Row counts, not quantity counts.
     this->Nhot = 0;
@@ -111,7 +145,7 @@ void SolverLinearlyImplicit::initialize_internal(
 
     this->SelectLinearSolver(size);
 
-    VecCreateSeq(PETSC_COMM_WORLD, size, &this->petsc_S);
+    MatCreateVecs(matrix->mat(), nullptr, &this->petsc_S);
 }
 /**
  * Set the initial guess for the linear solver.
@@ -163,11 +197,10 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         RebuildTerms(t, dt);
         this->timeKeeper->StopTimer(timerRebuild);
 
-        real_t *S;
-        VecGetArray(petsc_S, &S);
+        real_t *S = new real_t[matrix_size];
+
         this->timeKeeper->StartTimer(timerMatrix);
         BuildMatrix(t, dt, matrix, S);
-        this->timeKeeper->StopTimer(timerMatrix);
 
         // Negate vector
         // We do this since in DREAM, we write the equation as
@@ -179,12 +212,20 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         //   Ax = b
         //
         // Thus, b = -S
-        for (len_t i = 0; i < matrix->GetNRows(); i++)
-            S[i] = -S[i];
+        PetscInt rstart, rend;
+        VecGetOwnershipRange(petsc_S, &rstart, &rend);
+
+        real_t *Sloc;
+        VecGetArray(petsc_S, &Sloc);
+
+        for (PetscInt i = 0; i < rend - rstart; i++)
+            Sloc[i] = -S[i + rstart]; // local index i  ←  global index i+rstart
+
+        this->timeKeeper->StopTimer(timerMatrix);
 
         this->SaveDebugInfo(this->nTimeStep, matrix, S);
 
-        VecRestoreArray(petsc_S, &S);
+        VecRestoreArray(petsc_S, &Sloc);
 
         // Apply preconditioner (if enabled)
         this->Precondition(matrix, petsc_S);

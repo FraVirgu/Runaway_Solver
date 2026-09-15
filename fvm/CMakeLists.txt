@@ -1,6 +1,6 @@
 
 set(fvm_core
-    "${PROJECT_SOURCE_DIR}/fvm/BlockMatrix.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/BlockMatrix.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/DurationTimer.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Init.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Interpolator1D.cpp"
@@ -20,7 +20,7 @@ set(fvm_core
     "${PROJECT_SOURCE_DIR}/fvm/TimeKeeper.cpp"
 )
 set(fvm_core_headers
-    "${PROJECT_SOURCE_DIR}/include/FVM/BlockMatrix.hpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/BlockMatrix.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/FVMException.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Matrix.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/MatrixInverter.hpp"
