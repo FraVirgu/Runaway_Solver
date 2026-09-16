@@ -77,7 +77,7 @@ set(dream_equations
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/IonChargedPrescribedDiffusionTerm.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/IonNeutralPrescribedDiffusionTerm.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/IonSourceBoundaryCondition.cpp"
-    "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/KineticEquationTermIntegratedOverMomentum.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Equations/Fluid/KineticEquationTermIntegratedOverMomentum.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/KineticEnergyFromDistributionFunction.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/HeatFluxFromDistributionFunction.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/IonisationHeatingTerm.cpp"
@@ -91,7 +91,7 @@ set(dream_equations
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/SPIHeatAbsorbtionTerm.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/SPITransientTerm.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/IonTransientTerm.cpp"
-    "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/KineticEquationTermIntegratedOverMomentum.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Equations/Fluid/KineticEquationTermIntegratedOverMomentum.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/KiramovBoundaryHeatTransport.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/MaxwellianCollisionalEnergyTransferTerm.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Fluid/NBIElectronTerm.cpp"
@@ -208,7 +208,7 @@ set(dream_solvers
     "${PROJECT_SOURCE_DIR}/src/Solver/ExternalIterator.cpp"
    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Solver/Solver.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Solver/SolverLinearlyImplicit.cpp"
-    "${PROJECT_SOURCE_DIR}/src/Solver/SolverNonLinear.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Solver/SolverNonLinear.cpp"
     "${PROJECT_SOURCE_DIR}/src/Solver/NumericalJacobian.cpp"
 )
 
