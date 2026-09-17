@@ -83,6 +83,8 @@ namespace DREAM
         len_t Nhot;
         len_t Nre;
 
+        PetscInt r0, r1, mrs, mre;
+
         /*FVM::DurationTimer
             timerTot, timerCqh, timerREFluid, timerRebuildTerms;*/
         FVM::TimeKeeper *solver_timeKeeper;

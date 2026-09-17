@@ -115,8 +115,18 @@ void Matrix::Assemble()
  */
 void Matrix::PartialAssemble()
 {
+    static long callCount = 0;
+    PetscMPIInt pa_rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &pa_rank);
+    callCount++;
+    printf("[%d]       *** PartialAssemble CALL #%ld (BEGIN)\n", pa_rank, callCount);
+    fflush(stdout);
+
     MatAssemblyBegin(this->petsc_mat, MAT_FLUSH_ASSEMBLY);
     MatAssemblyEnd(this->petsc_mat, MAT_FLUSH_ASSEMBLY);
+
+    printf("[%d]       *** PartialAssemble CALL #%ld (END)\n", pa_rank, callCount);
+    fflush(stdout);
 }
 
 /**

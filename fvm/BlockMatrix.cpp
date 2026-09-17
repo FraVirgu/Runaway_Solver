@@ -14,25 +14,28 @@ using namespace std;
 /**
  * Constructor.
  */
-BlockMatrix::BlockMatrix() { }
+BlockMatrix::BlockMatrix() {}
 
 /**
  * Destructor.
  */
-BlockMatrix::~BlockMatrix() {
+BlockMatrix::~BlockMatrix()
+{
     this->Destroy();
 }
 
 /**
  * Construct the matrix
  */
-void BlockMatrix::ConstructSystem() {
+void BlockMatrix::ConstructSystem()
+{
     // Determine matrix size
     PetscInt mSize = this->next_subindex;
 
     // Calculate number of non-zero elements in matrix
     PetscInt *nnz = new PetscInt[mSize];
-    for (struct _subeq& s : this->subeqs) {
+    for (struct _subeq &s : this->subeqs)
+    {
         PetscInt snnz = s.nnz;
 
         // Limit number-of-nonzeros so that it is at most
@@ -47,7 +50,7 @@ void BlockMatrix::ConstructSystem() {
 
     this->Construct(mSize, mSize, 0, nnz);
 
-    delete [] nnz;
+    delete[] nnz;
 }
 
 /**
@@ -61,19 +64,20 @@ void BlockMatrix::ConstructSystem() {
  * id:   Optional ID of the block which can be used later to identify
  *       the block by code using this matrix.
  */
-len_t BlockMatrix::CreateSubEquation(const PetscInt n, const PetscInt nnz, const PetscInt id) {
+len_t BlockMatrix::CreateSubEquation(const PetscInt n, const PetscInt nnz, const PetscInt id)
+{
     // Define index set
     struct _subeq se;
-    se.n      = n;
-    se.nnz    = nnz;
+    se.n = n;
+    se.nnz = nnz;
     se.offset = this->next_subindex;
-    se.id     = id;
+    se.id = id;
 
     this->subeqs.push_back(se);
 
     this->next_subindex += n;
 
-    return (this->subeqs.size()-1);
+    return (this->subeqs.size() - 1);
 }
 
 /**
@@ -85,17 +89,17 @@ len_t BlockMatrix::CreateSubEquation(const PetscInt n, const PetscInt nnz, const
  *
  * WARNING: This routine is relatively slow for block matrices!
  */
-void BlockMatrix::IMinusDtA(const PetscScalar dt) {
+void BlockMatrix::IMinusDtA(const PetscScalar dt)
+{
     Vec v;
     // Create the scaling vector with the same layout as the matrix, so that
     // it remains valid for MatDiagonalScale() also when the matrix is
     // distributed over several processes.
     MatCreateVecs(this->petsc_mat, &v, nullptr);
 
-
     const PetscInt offs = this->rowOffset;
     for (PetscInt i = 0; i < this->blockn; i++)
-        VecSetValue(v, offs+i, -dt, INSERT_VALUES);
+        VecSetValue(v, offs + i, -dt, INSERT_VALUES);
 
     VecAssemblyBegin(v);
     VecAssemblyEnd(v);
@@ -112,22 +116,28 @@ void BlockMatrix::IMinusDtA(const PetscScalar dt) {
 /**
  * Get sub equation offset.
  */
-PetscInt BlockMatrix::GetOffset(const PetscInt subeq) {
+PetscInt BlockMatrix::GetOffset(const PetscInt subeq)
+{
     return this->subeqs.at(subeq).offset;
 }
 
 /**
  * Get sub equation offset based on the sub-equation ID.
  */
-PetscInt BlockMatrix::GetOffsetById(const PetscInt subeqId) {
+PetscInt BlockMatrix::GetOffsetById(const PetscInt subeqId)
+{
     for (len_t i = 0; i < this->subeqs.size(); i++)
         if (this->subeqs.at(i).id == subeqId)
             return this->subeqs.at(i).offset;
 
     throw BlockMatrixException(
         "No block with ID %d present in matrix.",
-        subeqId
-    );
+        subeqId);
+}
+
+PetscInt BlockMatrix::ViewSubEquationRow(const PetscInt subeq1)
+{
+    return this->subeqs.at(subeq1).offset;
 }
 
 /**
@@ -136,7 +146,8 @@ PetscInt BlockMatrix::GetOffsetById(const PetscInt subeqId) {
  * subeq1: Index of equation to set matrix to (block row index of sub-matrix).
  * subeq2: Index of unknown to set matrix to (block row column of sub-matrix).
  */
-void BlockMatrix::SelectSubEquation(const PetscInt subeq1, const PetscInt subeq2) {
+void BlockMatrix::SelectSubEquation(const PetscInt subeq1, const PetscInt subeq2)
+{
     this->SetOffset(this->subeqs.at(subeq1).offset, this->subeqs.at(subeq2).offset);
     this->blockn = this->subeqs.at(subeq1).n;
 }
@@ -148,7 +159,8 @@ void BlockMatrix::SelectSubEquation(const PetscInt subeq1, const PetscInt subeq2
  * subeq1: Index of equation for which matrix should be zeroed (block row index of sub-matrix).
  * subeq2: Index of unknown for which matrix should be zeroed (block row column of sub-matrix).
  */
-void BlockMatrix::ZeroEquation(const PetscInt subeq) {
+void BlockMatrix::ZeroEquation(const PetscInt subeq)
+{
     IS is;
     ISCreateStride(PETSC_COMM_WORLD, this->subeqs.at(subeq).n, this->subeqs.at(subeq).offset, 1, &is);
 
@@ -156,4 +168,3 @@ void BlockMatrix::ZeroEquation(const PetscInt subeq) {
 
     ISDestroy(&is);
 }
-

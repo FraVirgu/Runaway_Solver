@@ -159,7 +159,7 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
     printf("[%d] BuildMatrix: ENTER (matrix_size=%llu, %zu nontrivial unknowns)\n",
            bm_rank, (unsigned long long)matrix_size, nontrivial_unknowns.size());
     fflush(stdout);
-
+    MPI_Request ib_rq;
     // Reset matrix and rhs
     mat->Zero();
     for (len_t i = 0; i < matrix_size; i++)
@@ -172,6 +172,30 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
         map<len_t, len_t> &utmm = this->unknownToMatrixMapping;
         len_t matUqnId = utmm[uqnId]; // selecting row
 
+        if (mat->GetOffset(matUqnId) < mrs || mat->GetOffset(matUqnId) >= mre)
+        {
+            /*
+             printf("[%d]   uqn %llu ('%s') -> block %llu, offset %d SKIPPED (not owned by this rank)\n",
+                   bm_rank, (unsigned long long)uqnId,
+                   unknowns->GetUnknown(uqnId)->GetName().c_str(),
+                   (unsigned long long)matUqnId, (int)mat->GetOffset(matUqnId));
+            fflush(stdout);
+            */
+
+            for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
+            {
+                if (utmm.find(it->first) != utmm.end())
+                {
+                    if (!it->second->IsPredetermined())
+                    {
+
+                        mat->PartialAssemble();
+                        mat->PartialAssemble();
+                    }
+                }
+            }
+            continue;
+        }
         printf("[%d]   uqn %llu ('%s') -> block %llu, offset %d, nElem %llu\n",
                bm_rank, (unsigned long long)uqnId,
                unknowns->GetUnknown(uqnId)->GetName().c_str(),
@@ -195,7 +219,8 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
                 PetscInt vecoffs = mat->GetOffset(matUqnId);
                 it->second->SetMatrixElements(mat, S + vecoffs);
 
-                printf("[%d]     <- SetMatrixElements OK\n", bm_rank); fflush(stdout);
+                printf("[%d]     <- SetMatrixElements OK\n", bm_rank);
+                fflush(stdout);
 
                 // The unknown to which this operator should be applied is a
                 // "trivial" unknown quantity, meaning it does not appear in the
@@ -212,14 +237,19 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
                 const real_t *data = unknowns->GetUnknownData(it->first);
                 it->second->SetVectorElements(S + vecoffs, data);
 
-                printf("[%d]     <- SetVectorElements OK\n", bm_rank); fflush(stdout);
+                printf("[%d]     <- SetVectorElements OK\n", bm_rank);
+                fflush(stdout);
             }
         }
     }
+    int ib_finished = 0;
 
-    printf("[%d] BuildMatrix: -> Assemble\n", bm_rank); fflush(stdout);
+    MPI_Barrier(PETSC_COMM_WORLD);
+    printf("[%d] BuildMatrix: -> Assemble\n", bm_rank);
+    fflush(stdout);
     mat->Assemble();
-    printf("[%d] BuildMatrix: <- Assemble OK\n", bm_rank); fflush(stdout);
+    printf("[%d] BuildMatrix: <- Assemble OK\n", bm_rank);
+    fflush(stdout);
 }
 
 /**
