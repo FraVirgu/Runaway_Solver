@@ -82,6 +82,8 @@ namespace DREAM
 
         len_t Nhot;
         len_t Nre;
+        len_t Nfluid;
+        len_t Ntot;
 
         /*FVM::DurationTimer
             timerTot, timerCqh, timerREFluid, timerRebuildTerms;*/

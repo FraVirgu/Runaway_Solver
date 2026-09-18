@@ -156,9 +156,7 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
 {
     PetscMPIInt bm_rank;
     MPI_Comm_rank(PETSC_COMM_WORLD, &bm_rank);
-    printf("[%d] BuildMatrix: ENTER (matrix_size=%llu, %zu nontrivial unknowns)\n",
-           bm_rank, (unsigned long long)matrix_size, nontrivial_unknowns.size());
-    fflush(stdout);
+    // printf("[%d] BuildMatrix: ENTER (matrix_size=%llu, %zu nontrivial unknowns)\n",  bm_rank, (unsigned long long)matrix_size, nontrivial_unknowns.size()); fflush(stdout);
 
     // Reset matrix and rhs
     mat->Zero();
@@ -171,13 +169,15 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
         UnknownQuantityEquation *eqn = unknown_equations->at(uqnId);
         map<len_t, len_t> &utmm = this->unknownToMatrixMapping;
         len_t matUqnId = utmm[uqnId]; // selecting row
-
-        printf("[%d]   uqn %llu ('%s') -> block %llu, offset %d, nElem %llu\n",
-               bm_rank, (unsigned long long)uqnId,
-               unknowns->GetUnknown(uqnId)->GetName().c_str(),
-               (unsigned long long)matUqnId, (int)mat->GetOffset(matUqnId),
-               (unsigned long long)eqn->NumberOfElements());
-        fflush(stdout);
+                                      /*
+                                      printf("[%d]   uqn %llu ('%s') -> block %llu, offset %d, nElem %llu\n",
+                                  bm_rank, (unsigned long long)uqnId,
+                                  unknowns->GetUnknown(uqnId)->GetName().c_str(),
+                                  (unsigned long long)matUqnId, (int)mat->GetOffset(matUqnId),
+                                  (unsigned long long)eqn->NumberOfElements());
+                                  fflush(stdout);
+                              
+                                      */
 
         for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
         {
@@ -187,15 +187,13 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
                 SelectSubEquation(2, 0)   →  rowOffset=6000, colOffset=0   (no matrix change)
                 SetElement(5, 7, 1.3)     →  MatSetValue(mat, 6005, 7, 1.3)  (matrix changes here)
                 */
-                printf("[%d]     -> SetMatrixElements (op on '%s')\n", bm_rank,
-                       unknowns->GetUnknown(it->first)->GetName().c_str());
-                fflush(stdout);
+                // printf("[%d]     -> SetMatrixElements (op on '%s')\n", bm_rank, unknowns->GetUnknown(it->first)->GetName().c_str()); fflush(stdout);
 
                 mat->SelectSubEquation(matUqnId, utmm[it->first]); //   utmm[it->first] selecting
                 PetscInt vecoffs = mat->GetOffset(matUqnId);
                 it->second->SetMatrixElements(mat, S + vecoffs);
 
-                printf("[%d]     <- SetMatrixElements OK\n", bm_rank); fflush(stdout);
+                // printf("[%d]     <- SetMatrixElements OK\n", bm_rank); fflush(stdout);
 
                 // The unknown to which this operator should be applied is a
                 // "trivial" unknown quantity, meaning it does not appear in the
@@ -204,22 +202,20 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
             }
             else
             {
-                printf("[%d]     -> SetVectorElements (op on '%s')\n", bm_rank,
-                       unknowns->GetUnknown(it->first)->GetName().c_str());
-                fflush(stdout);
+                // printf("[%d]     -> SetVectorElements (op on '%s')\n", bm_rank, unknowns->GetUnknown(it->first)->GetName().c_str());  fflush(stdout);
 
                 PetscInt vecoffs = mat->GetOffset(matUqnId);
                 const real_t *data = unknowns->GetUnknownData(it->first);
                 it->second->SetVectorElements(S + vecoffs, data);
 
-                printf("[%d]     <- SetVectorElements OK\n", bm_rank); fflush(stdout);
+                // printf("[%d]     <- SetVectorElements OK\n", bm_rank); fflush(stdout);
             }
         }
     }
 
-    printf("[%d] BuildMatrix: -> Assemble\n", bm_rank); fflush(stdout);
+    // printf("[%d] BuildMatrix: -> Assemble\n", bm_rank); fflush(stdout);
     mat->Assemble();
-    printf("[%d] BuildMatrix: <- Assemble OK\n", bm_rank); fflush(stdout);
+    // printf("[%d] BuildMatrix: <- Assemble OK\n", bm_rank); fflush(stdout);
 }
 
 /**
