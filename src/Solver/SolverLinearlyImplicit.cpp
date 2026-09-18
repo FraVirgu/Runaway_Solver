@@ -242,6 +242,12 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         // printf("[%d] <- BuildMatrix OK\n", dbg_rank);
         fflush(stdout);
 
+        if (this->nTimeStep == 1 && iter == 1)
+        {
+            string dbgname = dbg_size == 1 ? "petsc_mat_serial_step1" : "petsc_mat_parallel_step1";
+            matrix->View(FVM::Matrix::BINARY_MATLAB, dbgname);
+        }
+
         // Negate vector
         // We do this since in DREAM, we write the equation as
         //

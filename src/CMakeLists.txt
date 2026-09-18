@@ -24,7 +24,7 @@ set(dream_core
     "${PROJECT_SOURCE_DIR}/src/OutputGeneratorSFile.cpp"
     "${PROJECT_SOURCE_DIR}/src/OtherQuantityHandler.cpp"
     "${PROJECT_SOURCE_DIR}/src/PostProcessor.cpp"
-    "${PROJECT_SOURCE_DIR}/src/Simulation.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Simulation.cpp"
     "${PROJECT_SOURCE_DIR}/src/TimeStepper/TimeStepper.cpp"
     "${PROJECT_SOURCE_DIR}/src/TimeStepper/TimeStepperAdaptive.cpp"
     "${PROJECT_SOURCE_DIR}/src/TimeStepper/TimeStepperConstant.cpp"

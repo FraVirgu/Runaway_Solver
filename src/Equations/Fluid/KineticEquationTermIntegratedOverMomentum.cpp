@@ -175,22 +175,26 @@ void KineticEquationTermIntegratedOverMomentum::SetMatrixElements(FVM::Matrix *m
     else
         MatMatMult(integrationMatrix->mat(), kineticMatrix->mat(), MAT_REUSE_MATRIX, PETSC_DEFAULT, &this->CsetElements);
 
-    // sum over columns: for each column index j, integrate over momentum (i.e. the rows).
-    // MatGetValues() can only read locally owned rows, so each process handles
-    // only the rows of C it owns. Since C and 'mat' share the same fluid row
-    // layout, the rows read here are also the rows written below, and no
-    // inter-process communication is needed (any stray off-process element
-    // would still be routed correctly by the subsequent matrix assembly).
-    PetscInt rstart, rend;
-    MatGetOwnershipRange(this->CsetElements, &rstart, &rend);
+    // 'CsetElements' is its own matrix (the product of 'integrationMatrix'
+    // and 'kineticMatrix'), with a row partitioning decided independently
+    // by PETSc -- it does NOT share row ownership with 'mat'. MatGetValues()
+    // can only read rows the calling rank owns locally, so reading
+    // CsetElements with 'mat'-relative row indices returns wrong values on
+    // any rank where the two partitionings don't coincide. Since
+    // CsetElements is small (nr x NCells), replicate it fully onto every
+    // rank first, then every rank can safely read any (i,j).
+    Mat CsetElementsLocal;
+    MatCreateRedundantMatrix(this->CsetElements, 0, PETSC_COMM_SELF, MAT_INITIAL_MATRIX, &CsetElementsLocal);
 
     for(PetscInt j=0; j<(PetscInt)NCells; j++){
-        for(PetscInt i=rstart; i<rend; i++){
+        for(PetscInt i=0; i<(PetscInt)nr; i++){
             PetscScalar v = 0;
-            MatGetValues(this->CsetElements,1,&i,1,&j,&v);
+            MatGetValues(CsetElementsLocal,1,&i,1,&j,&v);
             mat->SetElement(i,j,scaleFactor*v);
         }
     }
+
+    MatDestroy(&CsetElementsLocal);
 }
 
 
@@ -209,19 +213,22 @@ bool KineticEquationTermIntegratedOverMomentum::SetJacobianBlock(const len_t /*u
     else
         MatMatMult(integrationMatrix->mat(), kineticMatrix->mat(), MAT_REUSE_MATRIX, PETSC_DEFAULT, this->CsetJacobian+derivId);
 
-    // sum over columns: for each column index j, integrate over momentum (i.e. the rows).
-    // As in SetMatrixElements(), only the locally owned rows of C may be read.
+    // See the comment in SetMatrixElements(): CsetJacobian[derivId] has its
+    // own, independently-decided row partitioning that does not coincide
+    // with 'jac''s, so it must be replicated onto every rank before reading.
     PetscInt N = unknowns->GetUnknown(derivId)->NumberOfElements();
-    PetscInt rstart, rend;
-    MatGetOwnershipRange(this->CsetJacobian[derivId], &rstart, &rend);
+    Mat CsetJacobianLocal;
+    MatCreateRedundantMatrix(this->CsetJacobian[derivId], 0, PETSC_COMM_SELF, MAT_INITIAL_MATRIX, &CsetJacobianLocal);
 
     for(PetscInt j=0; j<N; j++){
-        for(PetscInt i=rstart; i<rend; i++){
+        for(PetscInt i=0; i<(PetscInt)nr; i++){
             PetscScalar v = 0;
-            MatGetValues(this->CsetJacobian[derivId],1,&i,1,&j,&v);
+            MatGetValues(CsetJacobianLocal,1,&i,1,&j,&v);
             jac->SetElement(i,j,scaleFactor*v);
         }
     }
+
+    MatDestroy(&CsetJacobianLocal);
 
     return contributes;
 }

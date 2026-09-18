@@ -43,8 +43,8 @@ import h5py
 
 IFACE = "/home/francesco-virgulti/Desktop/DREAM/build/iface"
 
-REFERENCE_FILE = f"{IFACE}/output_ilu_gmres.h5"
-TEST_FILE = f"{IFACE}/output_lu_amg.h5"
+REFERENCE_FILE = f"{IFACE}/output_seq.h5"
+TEST_FILE = f"{IFACE}/output_restart.h5"
 
 
 # ---------------------------------------------------------------------------
