@@ -26,6 +26,7 @@
  * advance the system in time.
  */
 
+#include <fstream>
 #include <vector>
 #include "DREAM/EquationSystem.hpp"
 #include "DREAM/IO.hpp"
@@ -109,6 +110,18 @@ void SolverLinearlyImplicit::initialize_internal(
     for (len_t id : fre)
         this->Nre += this->unknown_equations->at(id)->NumberOfElements();
 
+    // Save the block sizes MILU_PROVA needs to reconstruct the same
+    // -dream_split populations index sets (is_fhot/is_fre/is_fluid) when
+    // replaying the dumped matrices through a separate (e.g. parallel)
+    // solver process, which has no EquationSystem of its own to recompute
+    // these from.
+    {
+        std::ofstream blockSizesFile("petsc_block_sizes.txt");
+        blockSizesFile << "Nhot " << this->Nhot << "\n";
+        blockSizesFile << "Nre " << this->Nre << "\n";
+        blockSizesFile << "Ntot " << size << "\n";
+    }
+
     this->SelectLinearSolver(size);
 
     VecCreateSeq(PETSC_COMM_WORLD, size, &this->petsc_S);
@@ -169,6 +182,10 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         BuildMatrix(t, dt, matrix, S);
         this->timeKeeper->StopTimer(timerMatrix);
 
+        matrix->View(
+            FVM::Matrix::BINARY_MATLAB,
+            "petsc_mat_serial_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter));
+
         // Negate vector
         // We do this since in DREAM, we write the equation as
         //
@@ -185,6 +202,14 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         this->SaveDebugInfo(this->nTimeStep, matrix, S);
 
         VecRestoreArray(petsc_S, &S);
+
+        {
+            PetscViewer rhsViewer;
+            std::string rhsname = "petsc_rhs_serial_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter);
+            PetscViewerBinaryOpen(PETSC_COMM_WORLD, rhsname.c_str(), FILE_MODE_WRITE, &rhsViewer);
+            VecView(petsc_S, rhsViewer);
+            PetscViewerDestroy(&rhsViewer);
+        }
 
         // Apply preconditioner (if enabled)
         this->Precondition(matrix, petsc_S);
@@ -204,6 +229,14 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
             extiter_conv = this->extiter->Solve(t, dt, this->nTimeStep);
     } while (!extiter_conv);
 
+    {
+        PetscViewer rhsViewer;
+        std::string rhsname = "petsc_solution_final_step";
+        PetscViewerBinaryOpen(PETSC_COMM_WORLD, rhsname.c_str(), FILE_MODE_WRITE, &rhsViewer);
+        VecView(petsc_S, rhsViewer);
+        PetscViewerDestroy(&rhsViewer);
+    }
+
     if (this->extiter)
         this->extiter_nIterations.push_back(iter);
 
@@ -218,6 +251,7 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
 void SolverLinearlyImplicit::PrintTimings()
 {
     this->timeKeeper->PrintTimings(true, 0);
+    printf("  %-*s  %3.4f s\n", 20, "Total invert time:", this->timeKeeper->GetSeconds(this->timerInvert));
     this->Solver::PrintTimings_rebuild();
 }
 

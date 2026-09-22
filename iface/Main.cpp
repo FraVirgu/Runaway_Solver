@@ -3,6 +3,7 @@
  */
 
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <H5Cpp.h>
 #include <string>
@@ -27,6 +28,8 @@
 #include "DREAM/Settings/SimulationGenerator.hpp"
 #include "DREAM/Simulation.hpp"
 #include "FVM/FVMException.hpp"
+#include "FVM/Matrix.hpp"
+#include "FVM/Solvers/MILU_prova.hpp"
 
 using namespace std;
 
@@ -202,7 +205,7 @@ int main(int argc, char *argv[])
     dream_initialize(&argc2, argv2);*/
 
     // Initialize the DREAM library
-    if (color == 0)
+    if (size == 1)
     {
         PETSC_COMM_WORLD = sub_comm;
         dream_initialize();
@@ -247,6 +250,7 @@ int main(int argc, char *argv[])
                 display_adas(sim);
 
             sim->Run();
+            sim->Save();
         }
         catch (DREAM::QuitException &ex)
         {
@@ -268,7 +272,163 @@ int main(int argc, char *argv[])
             DREAM::IO::PrintError(ex.getDetailMsg().c_str());
             exit_code = 3;
         }
+
+        dream_finalize();
+        delete sim;
     }
 
+    else
+    {
+        PETSC_COMM_WORLD = MPI_COMM_WORLD;
+        dream_initialize();
+
+        // Block sizes for the -dream_split index sets
+        len_t blockNhot = 0, blockNre = 0, blockNtot = 0;
+        {
+            std::ifstream blockSizesFile("petsc_block_sizes.txt");
+            if (!blockSizesFile)
+                throw DREAM::FVM::FVMException(
+                    "Could not open petsc_block_sizes.txt (run the serial "
+                    "simulation first to produce it).");
+
+            std::string label;
+            blockSizesFile >> label >> blockNhot;
+            blockSizesFile >> label >> blockNre;
+            blockSizesFile >> label >> blockNtot;
+        }
+
+        DREAM::FVM::MILU_PROVA inverter(blockNtot, blockNhot, blockNre);
+
+        int numTimeSteps = 100;
+        {
+            std::ifstream numStepsFile("petsc_num_timesteps.txt");
+            if (numStepsFile)
+                numStepsFile >> numTimeSteps;
+        }
+
+        double totalLoadTime = 0.0; // matrix load (split-among-cores) time
+        double totalSolveTime = 0.0;
+
+        // Log stages: registered by ALL ranks, outside any rank guard
+        PetscLogStage loadStage, solveStage;
+        PetscLogStageRegister("Load", &loadStage);
+        PetscLogStageRegister("Solve", &solveStage);
+
+        Mat A = NULL; // distributed matrix
+        Vec b, x, final_sol;
+        PetscViewer viewer;
+
+        for (int step = 1; step <= numTimeSteps; step++)
+        {
+            string matname = "petsc_mat_serial_step" + to_string(step) + "_iter1";
+            string rhsname = "petsc_rhs_serial_step" + to_string(step) + "_iter1";
+
+            // Rank 0 decides whether this step exists, everybody follows
+            // (avoids a deadlock if ranks disagree about the files).
+            int haveStep = 0;
+            if (my_rank == 0)
+                haveStep = (access(matname.c_str(), F_OK) == 0 &&
+                            access(rhsname.c_str(), F_OK) == 0);
+            MPI_Bcast(&haveStep, 1, MPI_INT, 0, MPI_COMM_WORLD);
+            if (!haveStep)
+                continue;
+
+            // ---- 1. Load the matrix in parallel: PETSc's MatLoad splits
+            // the on-disk (serial) matrix directly among the ranks
+            // according to the parallel layout it decides. -------------
+            MPI_Barrier(PETSC_COMM_WORLD);
+            double tLoad0 = MPI_Wtime();
+
+            PetscLogStagePush(loadStage);
+            PetscViewerBinaryOpen(PETSC_COMM_WORLD, matname.c_str(), FILE_MODE_READ, &viewer);
+            MatCreate(PETSC_COMM_WORLD, &A);
+            MatSetType(A, MATAIJ);
+            MatLoad(A, viewer);
+            PetscViewerDestroy(&viewer);
+            PetscLogStagePop();
+
+            MPI_Barrier(PETSC_COMM_WORLD);
+            totalLoadTime += MPI_Wtime() - tLoad0;
+
+            // ---- 2. Info on the layout (first step only) -------------------
+            PetscInt row_start, row_end, M, N;
+            MatGetOwnershipRange(A, &row_start, &row_end);
+            MatGetSize(A, &M, &N);
+            if (step == 1)
+            {
+                PetscSynchronizedPrintf(PETSC_COMM_WORLD,
+                                        "[rank %d] local rows [%d, %d)\n", my_rank, (int)row_start, (int)row_end);
+                PetscSynchronizedFlush(PETSC_COMM_WORLD, PETSC_STDOUT);
+                if (my_rank == 0)
+                    cout << "[matrix] global size " << M << " x " << N << endl;
+            }
+
+            // ---- 3. Vectors with the same layout as A ---------------------
+            MatCreateVecs(A, &x, &b);
+
+            PetscViewerBinaryOpen(PETSC_COMM_WORLD, rhsname.c_str(), FILE_MODE_READ, &viewer);
+            VecLoad(b, viewer);
+            PetscViewerDestroy(&viewer);
+
+            // The reference solution is only valid for the last step
+            bool haveFinalSol = (step == numTimeSteps);
+            if (haveFinalSol)
+            {
+                PetscViewer viewer_final;
+                PetscViewerBinaryOpen(PETSC_COMM_WORLD, "petsc_solution_final_step",
+                                      FILE_MODE_READ, &viewer_final);
+                VecDuplicate(x, &final_sol);
+                VecLoad(final_sol, viewer_final);
+                PetscViewerDestroy(&viewer_final);
+            }
+
+            // ---- 4. Solve --------------------------------------------------
+            DREAM::FVM::Matrix Awrap(M, N, A);
+
+            MPI_Barrier(PETSC_COMM_WORLD);
+            double t0 = MPI_Wtime();
+            PetscLogStagePush(solveStage);
+            inverter.Invert(&Awrap, &b, &x);
+            PetscLogStagePop();
+            totalSolveTime += MPI_Wtime() - t0;
+
+            // ---- 5. Compare with the serial solution -----------------------
+            if (haveFinalSol)
+            {
+                const double tol = 1e-4;
+
+                Vec diff;
+                VecDuplicate(x, &diff);
+                VecWAXPY(diff, -1.0, final_sol, x);
+
+                PetscReal diffNorm, refNorm;
+                VecNorm(diff, NORM_2, &diffNorm);
+                VecNorm(final_sol, NORM_2, &refNorm);
+                PetscReal relError = (refNorm > 0.0) ? diffNorm / refNorm : diffNorm;
+
+                if (my_rank == 0)
+                    cout << "step " << step << ": ||x_parallel - x_serial|| / ||x_serial|| = "
+                         << relError << (relError <= tol ? " (MATCH)" : " (MISMATCH)") << endl;
+
+                VecDestroy(&diff);
+                VecDestroy(&final_sol);
+            }
+
+            VecDestroy(&x);
+            VecDestroy(&b);
+            MatDestroy(&A);
+        } // end for
+
+        if (my_rank == 0)
+        {
+            cout << endl;
+            cout << "Total matrix load (split-among-cores) time: " << totalLoadTime << " s" << endl;
+            cout << "Total parallel solver time:                 " << totalSolveTime << " s" << endl;
+        }
+
+        dream_finalize();
+        MPI_Comm_free(&sub_comm);
+        MPI_Finalize();
+    }
     return 0;
 }

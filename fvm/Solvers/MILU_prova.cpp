@@ -3,6 +3,7 @@
  * factorization (i.e. direct inversion).
  */
 
+#include <algorithm>
 #include <petscvec.h>
 #include "FVM/config.h"
 #include "FVM/FVMException.hpp"
@@ -105,8 +106,31 @@ void MILU_PROVA::ConfigureSplitKinetic()
     PetscInt Nk = this->Nhot + this->Nre;
     PetscInt Ntot = this->xn;
 
-    ISCreateStride(PETSC_COMM_WORLD, Nk, 0, 1, &is_kinetic);
-    ISCreateStride(PETSC_COMM_WORLD, Ntot - Nk, Nk, 1, &is_fluid);
+    // ISCreateStride(PETSC_COMM_WORLD, n, ...) interprets 'n' as THIS RANK'S
+    // local contribution, not a global count to be auto-split -- passing the
+    // same global field size on every rank silently builds an index set
+    // whose layout has no relation to how the operator matrix is actually
+    // partitioned (MatLoad, or any other assembly path, may split rows
+    // anywhere; the field boundaries need not land on a rank boundary).
+    // PCFieldSplitSetIS() / the MatCreateSubMatrix() it triggers then walks
+    // off into invalid memory instead of erroring cleanly. Each rank must
+    // therefore claim only the part of each field that falls within its own
+    // locally-owned row range of the operator matrix.
+    Mat A;
+    KSPGetOperators(this->ksp, &A, nullptr);
+    PetscInt rstart, rend;
+    MatGetOwnershipRange(A, &rstart, &rend);
+
+    PetscInt kinetic_lo = std::max(rstart, (PetscInt)0);
+    PetscInt kinetic_hi = std::min(rend, Nk);
+    PetscInt n_kinetic_local = std::max(kinetic_hi - kinetic_lo, (PetscInt)0);
+
+    PetscInt fluid_lo = std::max(rstart, Nk);
+    PetscInt fluid_hi = std::min(rend, Ntot);
+    PetscInt n_fluid_local = std::max(fluid_hi - fluid_lo, (PetscInt)0);
+
+    ISCreateStride(PETSC_COMM_WORLD, n_kinetic_local, kinetic_lo, 1, &is_kinetic);
+    ISCreateStride(PETSC_COMM_WORLD, n_fluid_local, fluid_lo, 1, &is_fluid);
 
     KSPGetPC(this->ksp, &pc);
     PCSetType(pc, PCFIELDSPLIT);
@@ -158,9 +182,29 @@ void MILU_PROVA::ConfigureSplitPopulations()
     PetscInt Nre = this->Nre;
     PetscInt Ntot = this->xn;
 
-    ISCreateStride(PETSC_COMM_WORLD, Nhot, 0, 1, &is_fhot);
-    ISCreateStride(PETSC_COMM_WORLD, Nre, Nhot, 1, &is_fre);
-    ISCreateStride(PETSC_COMM_WORLD, Ntot - Nhot - Nre, Nhot + Nre, 1, &is_fluid);
+    // See the comment in ConfigureSplitKinetic(): each rank must claim only
+    // the part of each field that falls within its own locally-owned row
+    // range of the operator matrix, not the field's full global size.
+    Mat A;
+    KSPGetOperators(this->ksp, &A, nullptr);
+    PetscInt rstart, rend;
+    MatGetOwnershipRange(A, &rstart, &rend);
+
+    PetscInt fhot_lo = std::max(rstart, (PetscInt)0);
+    PetscInt fhot_hi = std::min(rend, Nhot);
+    PetscInt n_fhot_local = std::max(fhot_hi - fhot_lo, (PetscInt)0);
+
+    PetscInt fre_lo = std::max(rstart, Nhot);
+    PetscInt fre_hi = std::min(rend, Nhot + Nre);
+    PetscInt n_fre_local = std::max(fre_hi - fre_lo, (PetscInt)0);
+
+    PetscInt fluid_lo = std::max(rstart, Nhot + Nre);
+    PetscInt fluid_hi = std::min(rend, Ntot);
+    PetscInt n_fluid_local = std::max(fluid_hi - fluid_lo, (PetscInt)0);
+
+    ISCreateStride(PETSC_COMM_WORLD, n_fhot_local, fhot_lo, 1, &is_fhot);
+    ISCreateStride(PETSC_COMM_WORLD, n_fre_local, fre_lo, 1, &is_fre);
+    ISCreateStride(PETSC_COMM_WORLD, n_fluid_local, fluid_lo, 1, &is_fluid);
 
     KSPGetPC(this->ksp, &pc);
     PCSetType(pc, PCFIELDSPLIT);
@@ -226,7 +270,7 @@ void MILU_PROVA::ConfigureSolver()
     if (std::strcmp(split, "none") == 0)
     {
         this->ConfigureMonolithic();
-    }
+        }
     else
     {
         // The stride-based index sets below assume the distribution functions
