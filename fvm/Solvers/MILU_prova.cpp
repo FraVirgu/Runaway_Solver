@@ -4,7 +4,10 @@
  */
 
 #include <algorithm>
+#include <iostream>
+#include <vector>
 #include <petscvec.h>
+#include <petscmat.h>
 #include "FVM/config.h"
 #include "FVM/FVMException.hpp"
 #include "FVM/Matrix.hpp"
@@ -299,6 +302,168 @@ void MILU_PROVA::ConfigureSolver()
     KSPSetFromOptions(this->ksp);
 
     this->configured = true;
+}
+
+/**
+ * Apply an ILU(1) preconditioner M to a sequential system, producing the
+ * explicit preconditioned operator MA_seq = M^{-1} A_seq and right-hand side
+ * Mb_seq = M^{-1} b_seq.
+ *
+ * A_seq, b_seq are left untouched; the results are placed in newly created
+ * *MA_seq / *Mb_seq (the caller owns them and must MatDestroy/VecDestroy).
+ *
+ * M^{-1} A_seq is formed one column at a time by applying the preconditioner
+ * to each column of a dense copy of A_seq -- PCApply has no sparse-matrix
+ * form, only Vec-to-Vec -- and the result is then thresholded (entries with
+ * |value| < dropTol are dropped) and packed back into a sparse matrix, since
+ * M^{-1} generally fills in what was a sparse operator.
+ *
+ * A_seq:   sequential system matrix (PETSC_COMM_SELF).
+ * b_seq:   sequential right-hand side, same size as A_seq.
+ * MA_seq:  on return, holds the sparsified M^{-1} A_seq (SeqAIJ).
+ * Mb_seq:  on return, holds M^{-1} b_seq.
+ * dropTol: entries of M^{-1} A_seq smaller than this in magnitude are
+ *          treated as fill-in noise and discarded when sparsifying.
+ */
+void MILU_PROVA::ApplyILUPreconditioning(
+    Mat A_seq, Vec b_seq, Mat *MA_seq, Vec *Mb_seq, PetscReal dropTol)
+{
+    // ---- 1. ILU factorization ----
+    KSP ksp_ilu;
+    PC pc_ilu;
+    KSPCreate(PETSC_COMM_SELF, &ksp_ilu);
+    KSPSetOperators(ksp_ilu, A_seq, A_seq);
+    KSPGetPC(ksp_ilu, &pc_ilu);
+    PCSetType(pc_ilu, PCILU);
+    PCFactorSetLevels(pc_ilu, 1);
+    KSPSetFromOptions(ksp_ilu);
+
+    KSPSetUp(ksp_ilu); // factorization happens here
+
+    // ---- 2. Mb = M^{-1} b  and  MA = M^{-1} A ----
+    VecDuplicate(b_seq, Mb_seq);
+    PCApply(pc_ilu, b_seq, *Mb_seq);
+
+    PetscInt n, nc;
+    MatGetSize(A_seq, &n, &nc);
+
+    // Dense copy of A, then X = M^{-1} A column by column
+    Mat Ad, X;
+    MatConvert(A_seq, MATSEQDENSE, MAT_INITIAL_MATRIX, &Ad);
+    MatCreateSeqDense(PETSC_COMM_SELF, n, n, NULL, &X);
+    for (PetscInt j = 0; j < n; j++)
+    {
+        Vec colA, colX;
+        MatDenseGetColumnVecRead(Ad, j, &colA);
+        MatDenseGetColumnVecWrite(X, j, &colX);
+        PCApply(pc_ilu, colA, colX);
+        MatDenseRestoreColumnVecWrite(X, j, &colX);
+        MatDenseRestoreColumnVecRead(Ad, j, &colA);
+    }
+
+    // Sparsify X (drop |entry| < dropTol) into a SeqAIJ matrix
+    const PetscScalar *xv;
+    PetscInt lda;
+    MatDenseGetLDA(X, &lda);
+    MatDenseGetArrayRead(X, &xv); // column-major: X(i,j) = xv[i + j*lda]
+
+    std::vector<PetscInt> nnz(n, 0);
+    for (PetscInt j = 0; j < n; j++)
+        for (PetscInt i = 0; i < n; i++)
+            if (PetscAbsScalar(xv[i + j * lda]) >= dropTol)
+                nnz[i]++;
+
+    MatCreateSeqAIJ(PETSC_COMM_SELF, n, n, 0, nnz.data(), MA_seq);
+    std::vector<PetscInt> cols;
+    std::vector<PetscScalar> vals;
+    for (PetscInt i = 0; i < n; i++)
+    {
+        cols.clear();
+        vals.clear();
+        for (PetscInt j = 0; j < n; j++)
+        {
+            PetscScalar v = xv[i + j * lda];
+            if (PetscAbsScalar(v) >= dropTol)
+            {
+                cols.push_back(j);
+                vals.push_back(v);
+            }
+        }
+        MatSetValues(*MA_seq, 1, &i, (PetscInt)cols.size(), cols.data(), vals.data(), INSERT_VALUES);
+    }
+    MatDenseRestoreArrayRead(X, &xv);
+    MatAssemblyBegin(*MA_seq, MAT_FINAL_ASSEMBLY);
+    MatAssemblyEnd(*MA_seq, MAT_FINAL_ASSEMBLY);
+
+    MatDestroy(&Ad);
+    MatDestroy(&X);
+    KSPDestroy(&ksp_ilu); // only now, after all PCApply calls
+}
+
+/**
+ * Plain (unpreconditioned) GMRES on an already-distributed system Ax = b.
+ *
+ * Builds and destroys its own KSP -- independent of this->ksp and Invert()
+ * -- for solving a system that has already been preconditioned explicitly
+ * (e.g. by ApplyILUPreconditioning() on rank 0, then distributed), so no
+ * second preconditioner is applied by default; PCNONE may still be
+ * overridden from the command line via -pc_type.
+ *
+ * A, b: the distributed operator and right-hand side.
+ * x:    solution vector. Contains the solution on return.
+ * step, my_rank: only used for the status line, printed on rank 0.
+ * gmresSetupStage, solveStage: PetscLogStage handles registered by the
+ *   caller, so KSPSetUp/KSPSolve are attributed to the caller's own
+ *   -log_view stages rather than an unnamed default stage.
+ *
+ * Returns the combined KSPSetUp + KSPSolve wall-clock time in seconds.
+ */
+double MILU_PROVA::Solve_GMRES(
+    Mat A, Vec b, Vec x, int step, int my_rank,
+    PetscLogStage gmresSetupStage, PetscLogStage solveStage)
+{
+    KSP ksp;
+    PC pc;
+    KSPCreate(PETSC_COMM_WORLD, &ksp);
+    KSPSetOperators(ksp, A, A);
+    KSPSetType(ksp, KSPGMRES);
+    KSPGMRESSetRestart(ksp, 100);
+    KSPSetTolerances(ksp, 1e-10, PETSC_DEFAULT, PETSC_DEFAULT, 1000);
+    KSPSetInitialGuessNonzero(ksp, PETSC_FALSE);
+
+    // The system is already preconditioned by the rank-0 ILU,
+    // so no second preconditioner by default (override with -pc_type)
+    KSPGetPC(ksp, &pc);
+    PCSetType(pc, PCNONE);
+    KSPSetFromOptions(ksp);
+
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double tS0 = MPI_Wtime();
+    PetscLogStagePush(gmresSetupStage);
+    KSPSetUp(ksp);
+    PetscLogStagePop();
+    double tSetup = MPI_Wtime() - tS0;
+
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double t0 = MPI_Wtime();
+    PetscLogStagePush(solveStage);
+    KSPSolve(ksp, b, x);
+    PetscLogStagePop();
+    double tSolve = MPI_Wtime() - t0;
+
+    PetscInt its;
+    KSPConvergedReason reason;
+    KSPGetIterationNumber(ksp, &its);
+    KSPGetConvergedReason(ksp, &reason);
+    if (my_rank == 0)
+        std::cout << "step " << step << ": GMRES its = " << its
+                   << ", " << (reason > 0 ? "converged" : "DIVERGED")
+                   << " (reason " << reason << ")"
+                   << ", setup " << tSetup << " s, solve " << tSolve << " s" << std::endl;
+
+    KSPDestroy(&ksp);
+
+    return tSetup + tSolve;
 }
 
 /**

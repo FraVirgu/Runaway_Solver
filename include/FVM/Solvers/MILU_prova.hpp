@@ -48,6 +48,14 @@ namespace DREAM::FVM
         ~MILU_PROVA();
 
         virtual void Invert(Matrix *, Vec *, Vec *) override;
+
+        static void ApplyILUPreconditioning(
+            Mat A_seq, Vec b_seq, Mat *MA_seq, Vec *Mb_seq,
+            PetscReal dropTol = 1e-8);
+
+        static double Solve_GMRES(
+            Mat A, Vec b, Vec x, int step, int my_rank,
+            PetscLogStage gmresSetupStage, PetscLogStage solveStage);
     };
 }
 
