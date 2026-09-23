@@ -1,33 +1,41 @@
 /**
- * Standalone test comparing two GMRES preconditioning paths on the same
+ * Standalone test comparing three GMRES preconditioning paths on the same
  * linear system:
  *
  *   1. Path A: PETSc's own PCILU, serial (rank 0 only, PETSC_COMM_SELF).
  *      Only factors a rank-local piece of the matrix -- no parallel
  *      equivalent -- so this always runs first as the serial baseline.
  *   2. hypre/BoomerAMG, distributed (PETSC_COMM_WORLD, any rank count).
+ *   3. Block-Jacobi with ILU sub-solver (PCBJACOBI / PCILU per block),
+ *      distributed (PETSC_COMM_WORLD, any rank count).
  *
  * Unlike the rank-0-factor-then-distribute machinery in Main.cpp's else
  * branch (DistributeMatrixFromRank0 / DistributeVectorFromRank0 /
- * MILU_PROVA::ApplyILUPreconditioning), the BoomerAMG path needs none of
- * that: the matrix is loaded directly in parallel with MatLoad on
- * PETSC_COMM_WORLD (PETSc's own row decomposition), and hypre factors its
- * preconditioner directly from that already-distributed matrix. Every
- * GMRES iteration then applies the preconditioner on the fly (PCApply),
- * exactly like PCILU does serially -- no dense matrix, no explicit M^{-1}A,
- * no rank-0 special-casing.
+ * MILU_PROVA::ApplyILUPreconditioning), the BoomerAMG and block-Jacobi
+ * paths need none of that: the matrix is loaded directly in parallel with
+ * MatLoad on PETSC_COMM_WORLD (PETSc's own row decomposition), and each
+ * preconditioner factors directly from that already-distributed matrix.
+ * Every GMRES iteration then applies the preconditioner on the fly
+ * (PCApply), exactly like PCILU does serially -- no dense matrix, no
+ * explicit M^{-1}A, no rank-0 special-casing.
  *
  *   -pc_type hypre -pc_hypre_type boomeramg
  *
- * is exactly what this test hardcodes (overridable from the command line
- * via PETSC_OPTIONS, same convention as everywhere else in this project).
+ * is exactly what this test hardcodes for path 2 (overridable from the
+ * command line via PETSC_OPTIONS, same convention as everywhere else in
+ * this project). Path 3 hardcodes
  *
- * Correctness is checked two ways for the BoomerAMG path:
+ *   -pc_type bjacobi -sub_pc_type ilu -sub_pc_factor_levels 0
+ *
+ * one block per MPI rank by default (PCBJacobi), each block factored with
+ * ILU(0) -- also overridable via PETSC_OPTIONS.
+ *
+ * Correctness is checked two ways for each distributed path:
  *   1. The true residual ||Ax - b|| / ||b||, computed independently of
  *      KSP's own converged-reason flag, on any rank count.
  *   2. When run with exactly 1 rank, ALSO compare against the Path A
- *      solution (x_ilu), as a sanity cross-check that boomeramg is
- *      converging to the same answer as the familiar PCILU path. This
+ *      solution (x_ilu), as a sanity cross-check that the distributed path
+ *      is converging to the same answer as the familiar PCILU path. This
  *      second check is skipped for n > 1, since PCILU has no well-defined
  *      distributed behaviour to compare against.
  *
@@ -36,6 +44,7 @@
  * separate executable (see iface/CMakeLists.txt, target testhypre).
  */
 
+#include <cstring>
 #include <iostream>
 #include <string>
 #include <unistd.h>
@@ -47,8 +56,9 @@ using namespace std;
 
 /**
  * Solve Ax = b with GMRES preconditioned by the given PC type (and, for
- * "hypre", the given hypre sub-type). Prints iteration count/convergence
- * on rank 0 and returns the wall-clock KSPSetUp+KSPSolve time.
+ * "hypre", the given hypre sub-type; for "bjacobi", each block is set up
+ * with ILU(0) as its sub-solver). Prints iteration count/convergence on
+ * rank 0 and returns the wall-clock KSPSetUp+KSPSolve time.
  */
 static double SolveWithPC(Mat A, Vec b, Vec x, const char *pcType,
                           const char *hypreType, const char *label)
@@ -73,6 +83,24 @@ static double SolveWithPC(Mat A, Vec b, Vec x, const char *pcType,
     PCSetType(pc, pcType);
     if (hypreType)
         PCHYPRESetType(pc, hypreType);
+    if (strcmp(pcType, PCBJACOBI) == 0)
+    {
+        // Default sub-solver for bjacobi (one block per rank): ILU(0),
+        // matching PETSC_OPTIONS="-sub_pc_type ilu -sub_pc_factor_levels 0"
+        // from the command line. PCSetUp must run first so the per-block
+        // sub-KSPs exist to configure.
+        PCSetUp(pc);
+        KSP *subksp;
+        PetscInt nlocal, first;
+        PCBJacobiGetSubKSP(pc, &nlocal, &first, &subksp);
+        for (PetscInt i = 0; i < nlocal; i++)
+        {
+            PC subpc;
+            KSPGetPC(subksp[i], &subpc);
+            PCSetType(subpc, PCILU);
+            PCFactorSetLevels(subpc, 0);
+        }
+    }
     KSPSetFromOptions(ksp); // command line / PETSC_OPTIONS may override any of the above
 
     MPI_Barrier(PETSC_COMM_WORLD);
@@ -245,12 +273,19 @@ int main(int argc, char *argv[])
     return 1;
 #endif
 
+    MPI_Barrier(PETSC_COMM_WORLD);
+    // =============== Distributed GMRES + block-Jacobi(ILU) ===============
+    Vec x_bjacobi;
+    VecDuplicate(b, &x_bjacobi);
+    SolveWithPC(A, b, x_bjacobi, PCBJACOBI, nullptr, "bjacobi/ilu GMRES");
+
     // ---- true residual, independent of KSP's own converged-reason ----
+    auto CheckTrueResidual = [&](Vec x, const char *label)
     {
         Vec r;
         VecDuplicate(b, &r);
-        MatMult(A, x_amg, r); // r = A*x_amg
-        VecAXPY(r, -1.0, b);  // r = A*x_amg - b
+        MatMult(A, x, r);    // r = A*x
+        VecAXPY(r, -1.0, b); // r = A*x - b
 
         PetscReal resNorm, bNorm;
         VecNorm(r, NORM_2, &resNorm);
@@ -259,21 +294,30 @@ int main(int argc, char *argv[])
 
         const double tol = 1e-6;
         if (my_rank == 0)
-            cout << "||A*x_amg - b|| / ||b|| = " << relRes
+            cout << "||A*" << label << " - b|| / ||b|| = " << relRes
                  << (relRes <= tol ? "  (PASS)" : "  (FAIL)") << endl;
 
         VecDestroy(&r);
-    }
+    };
+    CheckTrueResidual(x_amg, "x_amg");
+    CheckTrueResidual(x_bjacobi, "x_bjacobi");
 
     // ---- Path A cross-check: only meaningful when size == 1, since x_ilu
-    // then has the same layout as x_amg. ----
+    // then has the same layout as x_amg / x_bjacobi. ----
     if (my_rank == 0)
     {
-        if (size == 1)
+        auto CheckAgainstPathA = [&](Vec x, const char *label)
         {
+            if (size != 1)
+            {
+                cout << "(" << label << " vs x_ilu comparison skipped: running with "
+                     << size << " ranks, not 1)" << endl;
+                return;
+            }
+
             Vec diff;
             VecDuplicate(x_ilu, &diff);
-            VecWAXPY(diff, -1.0, x_ilu, x_amg);
+            VecWAXPY(diff, -1.0, x_ilu, x);
 
             PetscReal diffNorm, refNorm;
             VecNorm(diff, NORM_2, &diffNorm);
@@ -281,16 +325,14 @@ int main(int argc, char *argv[])
             PetscReal relError = (refNorm > 0.0) ? diffNorm / refNorm : diffNorm;
 
             const double tol = 1e-6;
-            cout << "||x_amg - x_ilu|| / ||x_ilu|| = " << relError
+            cout << "||" << label << " - x_ilu|| / ||x_ilu|| = " << relError
                  << (relError <= tol ? "  (MATCH)" : "  (MISMATCH)") << endl;
 
             VecDestroy(&diff);
-        }
-        else
-        {
-            cout << "(x_amg vs x_ilu comparison skipped: running with "
-                 << size << " ranks, not 1)" << endl;
-        }
+        };
+
+        CheckAgainstPathA(x_amg, "x_amg");
+        CheckAgainstPathA(x_bjacobi, "x_bjacobi");
 
         VecDestroy(&x_ilu);
     }
@@ -298,6 +340,7 @@ int main(int argc, char *argv[])
     MatDestroy(&A);
     VecDestroy(&b);
     VecDestroy(&x_amg);
+    VecDestroy(&x_bjacobi);
 
     dream_finalize();
     MPI_Finalize();
