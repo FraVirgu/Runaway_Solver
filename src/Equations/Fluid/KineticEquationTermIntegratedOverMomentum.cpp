@@ -252,6 +252,18 @@ void KineticEquationTermIntegratedOverMomentum::SetVectorElements(real_t *vec, c
 }
 
 /**
+ * Returns NNZ per row for the linear operator matrix built by
+ * SetMatrixElements(). Each fluid row is obtained by momentum-integrating
+ * over the full kinetic grid (via integrationMatrix * kineticMatrix), so
+ * in the worst case every one of the NCells kinetic columns can contribute
+ * a nonzero entry to a given fluid row.
+ */
+len_t KineticEquationTermIntegratedOverMomentum::GetNumberOfNonZerosPerRow() const
+{
+    return NCells;
+}
+
+/**
  * Returns NNZ from the input kinetic equation term, replacing NumberOfNonZerosPerRow by the kinetic NCells.
  * (assumes that nnz_jac in kineticOperator is of the form nnz + ...)
  */

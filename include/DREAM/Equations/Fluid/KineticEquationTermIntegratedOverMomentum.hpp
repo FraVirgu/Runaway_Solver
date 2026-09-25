@@ -41,7 +41,7 @@ namespace DREAM {
         );
         ~KineticEquationTermIntegratedOverMomentum();
 
-        virtual len_t GetNumberOfNonZerosPerRow() const override {return 1;};
+        virtual len_t GetNumberOfNonZerosPerRow() const override;
         virtual len_t GetNumberOfNonZerosPerRow_jac() const override;
 
 		virtual void Allocate();
