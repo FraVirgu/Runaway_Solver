@@ -1,10 +1,15 @@
 /**
- * Standalone test comparing two GMRES preconditioning paths on the same
- * linear system, both fully distributed (PETSC_COMM_WORLD, any rank
- * count):
+ * Standalone test comparing three GMRES preconditioning paths on the same
+ * linear system, all fully distributed (PETSC_COMM_WORLD, any rank count):
  *
- *   1. hypre/BoomerAMG.
+ *   1. hypre/BoomerAMG, built directly against a raw KSP/PC here.
  *   2. Block-Jacobi with ILU sub-solver (PCBJACOBI / PCILU per block).
+ *   3. hypre/BoomerAMG again, but this time via MIAMG -- the MatrixInverter
+ *      actually wired into DREAM's linear solver (see
+ *      OptionConstants::LINEAR_SOLVER_AMG in Solver::ConstructLinearSolver)
+ *      -- so its -dream_amg_lag_pc behaviour can be checked against the
+ *      same loaded system as paths 1 and 2, not just measured indirectly
+ *      through a full DREAM run.
  *
  * Unlike TestHypre.cpp, this test has no rank-0-only serial baseline (no
  * MILU_PROVA Path A) -- there is no my_rank == 0 special-casing anywhere.
@@ -24,7 +29,10 @@
  *   -pc_type bjacobi -sub_pc_type ilu -sub_pc_factor_levels 0
  *
  * one block per MPI rank by default (PCBJacobi), each block factored with
- * ILU(0) -- also overridable via PETSC_OPTIONS.
+ * ILU(0) -- also overridable via PETSC_OPTIONS. Path 3 hardcodes the same
+ * hypre/boomeramg configuration as path 1 inside MIAMG::ConfigureSolver(),
+ * so any difference from path 1 comes from MIAMG's own logic (in
+ * particular -dream_amg_lag_pc), not from a different PC setup.
  *
  * Correctness is checked the one way that makes sense on any rank count:
  * the true residual ||Ax - b|| / ||b||, computed independently of KSP's
@@ -43,8 +51,11 @@
 
 #include <petscksp.h>
 #include "DREAM/Init.h"
+#include "FVM/Matrix.hpp"
+#include "FVM/Solvers/MIAMG.hpp"
 
 using namespace std;
+using namespace DREAM;
 
 /**
  * Solve Ax = b with GMRES preconditioned by the given PC type (and, for
@@ -53,8 +64,13 @@ using namespace std;
  * rank 0 and returns the wall-clock KSPSetUp+KSPSolve time.
  */
 static double SolveWithPC(Mat A, Vec b, Vec x, const char *pcType,
-                          const char *hypreType, const char *label)
+                          const char *hypreType, const char *label,
+                          const char *stageName)
 {
+    PetscLogStage stage;
+    PetscLogStageRegister(stageName, &stage);
+    PetscLogStagePush(stage);
+
     KSP ksp;
     PC pc;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
@@ -116,6 +132,51 @@ static double SolveWithPC(Mat A, Vec b, Vec x, const char *pcType,
              << ", time " << elapsed << " s" << endl;
 
     KSPDestroy(&ksp);
+    PetscLogStagePop();
+    return elapsed;
+}
+
+/**
+ * Solve Ax = b through MIAMG -- the same MatrixInverter DREAM's real solver
+ * uses for OptionConstants::LINEAR_SOLVER_AMG -- rather than a KSP/PC built
+ * directly here. A is wrapped in a bare FVM::Matrix (the
+ * (PetscInt, PetscInt, Mat) constructor just holds the existing Mat, it
+ * does not copy or reallocate it), since MatrixInverter::Invert takes
+ * FVM::Matrix*, not Mat.
+ *
+ * Exercises exactly the code path a real DREAM run takes on every timestep:
+ * a fresh MIAMG instance's first Invert() call always does the full
+ * PCSetUp (MIAMG's own callsSinceSetup counter starts at 0), so calling
+ * Invert() here more than once demonstrates -dream_amg_lag_pc the same way
+ * repeated timesteps would -- see MIAMG::ConfigureSolver() for what the
+ * option does and why it exists.
+ *
+ * Prints iteration count/convergence on rank 0 and returns the wall-clock
+ * time of all Invert() calls combined.
+ */
+static double SolveWithMIAMG(Mat A, PetscInt M, Vec b, Vec x, int nSolves,
+                              PetscLogStage stage)
+{
+    PetscLogStagePush(stage);
+
+    FVM::Matrix matrix(M, M, A);
+    FVM::MIAMG inverter(M);
+
+    int my_rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &my_rank);
+
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double t0 = MPI_Wtime();
+    for (int i = 0; i < nSolves; i++)
+        inverter.Invert(&matrix, &b, &x);
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double elapsed = MPI_Wtime() - t0;
+
+    if (my_rank == 0)
+        cout << "MIAMG GMRES: " << nSolves << " Invert() call"
+             << (nSolves == 1 ? "" : "s") << ", time " << elapsed << " s" << endl;
+
+    PetscLogStagePop();
     return elapsed;
 }
 
@@ -182,7 +243,8 @@ int main(int argc, char *argv[])
     VecDuplicate(b, &x_amg);
 
 #ifdef PETSC_HAVE_HYPRE
-    SolveWithPC(A, b, x_amg, PCHYPRE, "boomeramg", "hypre/boomeramg GMRES");
+    SolveWithPC(A, b, x_amg, PCHYPRE, "boomeramg", "hypre/boomeramg GMRES",
+                "AMG solve");
 #else
     if (my_rank == 0)
         cerr << "This PETSc build has no hypre support (PETSC_HAVE_HYPRE "
@@ -197,7 +259,30 @@ int main(int argc, char *argv[])
     // =============== Distributed GMRES + block-Jacobi(ILU) ===============
     Vec x_bjacobi;
     VecDuplicate(b, &x_bjacobi);
-    SolveWithPC(A, b, x_bjacobi, PCBJACOBI, nullptr, "bjacobi/ilu GMRES");
+    SolveWithPC(A, b, x_bjacobi, PCBJACOBI, nullptr, "bjacobi/ilu GMRES",
+                "BJacobi solve");
+
+    MPI_Barrier(PETSC_COMM_WORLD);
+    // =============== Distributed GMRES + hypre/BoomerAMG via MIAMG ===============
+#ifdef PETSC_HAVE_HYPRE
+    Vec x_miamg;
+    VecDuplicate(b, &x_miamg);
+
+    PetscLogStage miamgStage;
+    PetscLogStageRegister("MIAMG solve", &miamgStage);
+
+    // One Invert() call reproduces path 1 exactly (fresh PCSetUp, since
+    // MIAMG's callsSinceSetup counter starts at 0); pass more to see
+    // -dream_amg_lag_pc reuse the hierarchy across "timesteps" the same way
+    // it would across repeated calls from SolverLinearlyImplicit::Solve.
+    // The matrix and rhs are unchanged between calls here (unlike a real
+    // run, where both change every timestep), so this only exercises the
+    // reuse-vs-rebuild bookkeeping and its timing, not staleness against an
+    // evolving system -- for that, compare against real DREAM runs instead.
+    PetscInt nMIAMGSolves = 1;
+    PetscOptionsGetInt(NULL, NULL, "-test_miamg_nsolves", &nMIAMGSolves, NULL);
+    SolveWithMIAMG(A, M, b, x_miamg, nMIAMGSolves, miamgStage);
+#endif
 
     // ---- true residual, independent of KSP's own converged-reason ----
     auto CheckTrueResidual = [&](Vec x, const char *label)
@@ -221,11 +306,17 @@ int main(int argc, char *argv[])
     };
     CheckTrueResidual(x_amg, "x_amg");
     CheckTrueResidual(x_bjacobi, "x_bjacobi");
+#ifdef PETSC_HAVE_HYPRE
+    CheckTrueResidual(x_miamg, "x_miamg");
+#endif
 
     MatDestroy(&A);
     VecDestroy(&b);
     VecDestroy(&x_amg);
     VecDestroy(&x_bjacobi);
+#ifdef PETSC_HAVE_HYPRE
+    VecDestroy(&x_miamg);
+#endif
 
     dream_finalize();
     MPI_Finalize();

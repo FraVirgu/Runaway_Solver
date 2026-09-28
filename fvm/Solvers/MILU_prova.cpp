@@ -161,89 +161,6 @@ void MILU_PROVA::ConfigureSplitKinetic()
 }
 
 /**
- * Configuration 3: the two kinetic populations separated as well.
- *
- * The operator has a different character on each: on f_hot the collision
- * frequencies scale as p^-3 and are large at thermal momenta, so the block is
- * diffusion-dominated and elliptic-like, which is the regime algebraic
- * multigrid is built for. On f_re those frequencies are negligible and the
- * equation is essentially pure advection, where error is not smooth along the
- * flow direction and coarsening has little to remove; incomplete LU is both
- * cheaper and better suited there.
- *
- * The defaults below therefore differ between the two blocks. Whether the
- * distinction earns its keep is a question for measurement -- the control is
- * to exchange the two preconditioners from the command line and confirm that
- * the result is worse.
- */
-void MILU_PROVA::ConfigureSplitPopulations()
-{
-    PC pc;
-    IS is_fhot, is_fre, is_fluid;
-
-    PetscInt Nhot = this->Nhot;
-    PetscInt Nre = this->Nre;
-    PetscInt Ntot = this->xn;
-
-    // See the comment in ConfigureSplitKinetic(): each rank must claim only
-    // the part of each field that falls within its own locally-owned row
-    // range of the operator matrix, not the field's full global size.
-    Mat A;
-    KSPGetOperators(this->ksp, &A, nullptr);
-    PetscInt rstart, rend;
-    MatGetOwnershipRange(A, &rstart, &rend);
-
-    PetscInt fhot_lo = std::max(rstart, (PetscInt)0);
-    PetscInt fhot_hi = std::min(rend, Nhot);
-    PetscInt n_fhot_local = std::max(fhot_hi - fhot_lo, (PetscInt)0);
-
-    PetscInt fre_lo = std::max(rstart, Nhot);
-    PetscInt fre_hi = std::min(rend, Nhot + Nre);
-    PetscInt n_fre_local = std::max(fre_hi - fre_lo, (PetscInt)0);
-
-    PetscInt fluid_lo = std::max(rstart, Nhot + Nre);
-    PetscInt fluid_hi = std::min(rend, Ntot);
-    PetscInt n_fluid_local = std::max(fluid_hi - fluid_lo, (PetscInt)0);
-
-    ISCreateStride(PETSC_COMM_WORLD, n_fhot_local, fhot_lo, 1, &is_fhot);
-    ISCreateStride(PETSC_COMM_WORLD, n_fre_local, fre_lo, 1, &is_fre);
-    ISCreateStride(PETSC_COMM_WORLD, n_fluid_local, fluid_lo, 1, &is_fluid);
-
-    KSPGetPC(this->ksp, &pc);
-    PCSetType(pc, PCFIELDSPLIT);
-    PCFieldSplitSetIS(pc, "fhot", is_fhot);
-    PCFieldSplitSetIS(pc, "fre", is_fre);
-    PCFieldSplitSetIS(pc, "fluid", is_fluid);
-
-    ISDestroy(&is_fhot);
-    ISDestroy(&is_fre);
-    ISDestroy(&is_fluid);
-
-    PCFieldSplitSetType(pc, PC_COMPOSITE_ADDITIVE);
-
-    SetDefaultOption("-fieldsplit_fhot_ksp_type", "preonly");
-#ifdef PETSC_HAVE_HYPRE
-    SetDefaultOption("-fieldsplit_fhot_pc_type", "hypre");
-    SetDefaultOption("-fieldsplit_fhot_pc_hypre_type", "boomeramg");
-    // The default strength threshold of 0.25 coarsens in every direction
-    // alike. The operator is anisotropic -- the couplings in p and in xi0
-    // differ by orders of magnitude, and which dominates varies across the
-    // domain -- so a more selective threshold is used.
-    SetDefaultOption("-fieldsplit_fhot_pc_hypre_boomeramg_strong_threshold", "0.5");
-#else
-    // hypre unavailable: fall back on PETSc's smoothed-aggregation multigrid.
-    SetDefaultOption("-fieldsplit_fhot_pc_type", "gamg");
-#endif
-
-    SetDefaultOption("-fieldsplit_fre_ksp_type", "preonly");
-    SetDefaultOption("-fieldsplit_fre_pc_type", "ilu");
-    SetDefaultOption("-fieldsplit_fre_pc_factor_levels", "0");
-
-    SetDefaultOption("-fieldsplit_fluid_ksp_type", "preonly");
-    SetDefaultOption("-fieldsplit_fluid_pc_type", "lu");
-}
-
-/**
  * One-time construction of the solver.
  *
  * Separated from Invert() because the splits must be built exactly once:
@@ -254,9 +171,8 @@ void MILU_PROVA::ConfigureSplitPopulations()
  *
  * The configuration is chosen by -dream_split:
  *
- *   none         no splitting; -pc_type governs the whole system
- *   kinetic      kinetic block separated from fluid and scalar
- *   populations  f_hot, f_re and fluid separated  (default)
+ *   none      no splitting; -pc_type governs the whole system  (default)
+ *   kinetic   kinetic block separated from fluid and scalar
  */
 void MILU_PROVA::ConfigureSolver()
 {
@@ -264,7 +180,7 @@ void MILU_PROVA::ConfigureSolver()
     PetscInt Nre = this->Nre;
     PetscInt Ntot = this->xn;
 
-    char split[32] = "populations";
+    char split[32] = "none";
     PetscBool set;
     PetscOptionsGetString(NULL, NULL, "-dream_split", split, sizeof(split), &set);
 
@@ -287,12 +203,10 @@ void MILU_PROVA::ConfigureSolver()
 
         if (std::strcmp(split, "kinetic") == 0)
             this->ConfigureSplitKinetic();
-        else if (std::strcmp(split, "populations") == 0)
-            this->ConfigureSplitPopulations();
         else
             throw FVMException(
                 "MILU_PROVA: unrecognised -dream_split '%s' "
-                "(expected none, kinetic or populations).",
+                "(expected none or kinetic).",
                 split);
     }
 

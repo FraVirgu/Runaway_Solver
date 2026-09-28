@@ -10,19 +10,18 @@ namespace DREAM::FVM
     /**
      * Iterative solver for the DREAM equation system.
      *
-     * The system is solved by flexible GMRES, preconditioned by one of three
+     * The system is solved by flexible GMRES, preconditioned by one of two
      * configurations selected at runtime through -dream_split:
      *
-     *   none         no splitting; -pc_type governs the whole system
-     *   kinetic      kinetic block separated from fluid and scalar
-     *   populations  f_hot, f_re and fluid separated  (default)
+     *   none      no splitting; -pc_type governs the whole system  (default)
+     *   kinetic   kinetic block separated from fluid and scalar
      *
-     * The splits exploit the structure of the assembled matrix: the
+     * The kinetic split exploits the structure of the assembled matrix: the
      * distribution functions occupy the leading rows and carry essentially
      * the whole system, whereas the fluid and scalar quantities are moments
      * and contribute O(N_r) rows each. Separating them keeps the dense moment
      * rows, which couple one fluid unknown to an entire kinetic block, out of
-     * the preconditioner applied to the kinetic blocks.
+     * the preconditioner applied to the kinetic block.
      */
     class MILU_PROVA : public MatrixInverter
     {
@@ -41,7 +40,6 @@ namespace DREAM::FVM
         void ConfigureOuter();
         void ConfigureMonolithic();
         void ConfigureSplitKinetic();
-        void ConfigureSplitPopulations();
 
     public:
         MILU_PROVA(const len_t n, len_t Nhot, len_t Nre);

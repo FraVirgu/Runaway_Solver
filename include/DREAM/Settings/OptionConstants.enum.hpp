@@ -156,7 +156,8 @@ enum linear_solver
     LINEAR_SOLVER_MKL = 3,
     LINEAR_SOLVER_SUPERLU = 4,
     LINEAR_SOLVER_GMRES = 5,
-    LINEAR_SOLVER_LU_PROVA = 6
+    LINEAR_SOLVER_LU_PROVA = 6,
+    LINEAR_SOLVER_AMG = 7
 };
 
 /////////////////////////////////////
