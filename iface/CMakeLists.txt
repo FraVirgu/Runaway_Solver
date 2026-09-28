@@ -51,6 +51,18 @@ add_executable(testhypre ${testhypre_files})
 target_link_libraries(testhypre PUBLIC dream)
 set_target_properties(testhypre PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 
+# Same two distributed paths (hypre/BoomerAMG, block-Jacobi/ILU) as
+# testhypre, but with no rank-0-only serial baseline at all -- no
+# my_rank == 0 special-casing anywhere. Does not touch Main.cpp or
+# TestHypre.cpp.
+set(testhypreparallel_files
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/iface/TestHypreParallel.cpp"
+)
+
+add_executable(testhypreparallel ${testhypreparallel_files})
+target_link_libraries(testhypreparallel PUBLIC dream)
+set_target_properties(testhypreparallel PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+
 #if (INTERPROC_OPTIM AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
 #    include(CheckIPOSupported)
 #    # Clang does not support IPO (although Clang++ does), so we need

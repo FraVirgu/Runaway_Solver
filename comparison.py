@@ -41,10 +41,10 @@ import h5py
 # Files
 # ---------------------------------------------------------------------------
 
-IFACE = "/home/francesco-virgulti/Desktop/DREAM/build/iface"
+IFACE = "/home/francesco-virgulti/Desktop/Runaway_Solver/output"
 
-REFERENCE_FILE = f"{IFACE}/output_ilu_gmres.h5"
-TEST_FILE = f"{IFACE}/output_lu_amg.h5"
+REFERENCE_FILE = f"{IFACE}/output_lu.h5"
+TEST_FILE = f"{IFACE}/output_ilu.h5"
 
 
 # ---------------------------------------------------------------------------

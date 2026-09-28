@@ -2,9 +2,20 @@
  * Standalone test comparing three GMRES preconditioning paths on the same
  * linear system:
  *
- *   1. Path A: PETSc's own PCILU, serial (rank 0 only, PETSC_COMM_SELF).
- *      Only factors a rank-local piece of the matrix -- no parallel
+ *   1. Path A: dreami's own linear solver, DREAM::FVM::MILU_PROVA, called
+ *      directly -- not a hand-copied replica of its KSP/PC setup, but the
+ *      actual production class (fvm/Solvers/MILU_prova.cpp), so this path
+ *      can never drift out of sync with what dreami itself runs. A_seq is
+ *      wrapped in an FVM::Matrix (the Matrix(m, n, Mat) constructor, which
+ *      takes ownership of an already-built PETSc Mat without copying it),
+ *      and MILU_PROVA is constructed with the same Nhot/Nre block sizes
+ *      dreami itself used, read back from petsc_block_sizes.txt (written
+ *      by SolverLinearlyImplicit::initialize_internal for exactly this
+ *      kind of external replay). Serial (rank 0 only, PETSC_COMM_SELF) --
+ *      only factors a rank-local piece of the matrix, no parallel
  *      equivalent -- so this always runs first as the serial baseline.
+ *      The -dream_split configuration (none/kinetic/populations) is
+ *      selected the same way it is in dreami: via PETSC_OPTIONS.
  *   2. hypre/BoomerAMG, distributed (PETSC_COMM_WORLD, any rank count).
  *   3. Block-Jacobi with ILU sub-solver (PCBJACOBI / PCILU per block),
  *      distributed (PETSC_COMM_WORLD, any rank count).
@@ -45,12 +56,15 @@
  */
 
 #include <cstring>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <unistd.h>
 
 #include <petscksp.h>
 #include "DREAM/Init.h"
+#include "FVM/Matrix.hpp"
+#include "FVM/Solvers/MILU_prova.hpp"
 
 using namespace std;
 
@@ -185,14 +199,26 @@ int main(int argc, char *argv[])
         cout << "Loaded system: " << M << " x " << N
              << "  (running on " << size << " rank" << (size == 1 ? "" : "s") << ")" << endl;
 
-    // =============== Path A: rank-0-only PETSc PCILU + GMRES =============
+    // =============== Path A: rank-0-only DREAM::FVM::MILU_PROVA =============
     // Runs first, before the parallel hypre path, so its iteration count
     // and timing are available as the serial baseline for the comparison
     // below. Independent of how many MPI ranks the job was launched with:
     // rank 0 loads its own private copy of A, b on PETSC_COMM_SELF (never
     // touching the already-distributed A, b below) and solves entirely by
     // itself, exactly as in TestILUCompare.cpp's Path A. tLoadA times that
-    // load, tPathA the KSPSetUp+KSPSolve, both rank-0 wall-clock.
+    // load, tPathA the MILU_PROVA::Invert call, both rank-0 wall-clock.
+    //
+    // This calls dreami's actual production solver class directly -- not a
+    // hand-copied replica of its KSP/PC setup -- so it can never drift out
+    // of sync with what dreami itself runs. A_seq is wrapped in an
+    // FVM::Matrix via the Matrix(m, n, Mat) constructor (no copy of the
+    // underlying PETSc Mat), and MILU_PROVA is given the same Nhot/Nre
+    // block sizes dreami used, read back from petsc_block_sizes.txt
+    // (written by SolverLinearlyImplicit::initialize_internal for exactly
+    // this kind of external replay). The -dream_split configuration
+    // (none/kinetic/populations) and any PC/KSP overrides are selected the
+    // same way they are in dreami: via PETSC_OPTIONS/the command line,
+    // since MILU_PROVA::ConfigureSolver() calls KSPSetFromOptions() itself.
     Vec x_ilu = nullptr; // only valid on rank 0; used below if size == 1
     MPI_Barrier(PETSC_COMM_WORLD);
     if (my_rank == 0)
@@ -218,34 +244,50 @@ int main(int argc, char *argv[])
 
         VecDuplicate(b_seq, &x_ilu);
 
+        PetscInt Ntot;
+        MatGetSize(A_seq, &Ntot, nullptr);
+
+        // Nhot/Nre as dreami itself computed them for this same matrix,
+        // read back from the file SolverLinearlyImplicit::initialize_internal
+        // writes for this purpose. MILU_PROVA's monolithic configuration
+        // (-dream_split none) does not use them, but its constructor and
+        // ConfigureSolver() require valid values regardless.
+        PetscInt Nhot = 0, Nre = 0;
+        {
+            ifstream blockSizesFile("petsc_block_sizes.txt");
+            string name;
+            PetscInt value;
+            while (blockSizesFile >> name >> value)
+            {
+                if (name == "Nhot")
+                    Nhot = value;
+                else if (name == "Nre")
+                    Nre = value;
+            }
+            if (!blockSizesFile.eof() && blockSizesFile.fail())
+                cerr << "Warning: could not parse petsc_block_sizes.txt -- "
+                        "Nhot/Nre default to 0."
+                     << endl;
+        }
+
         double tA0 = MPI_Wtime();
         {
-            KSP ksp;
-            PC pc;
-            KSPCreate(PETSC_COMM_SELF, &ksp);
-            KSPSetOperators(ksp, A_seq, A_seq);
-            KSPSetType(ksp, KSPGMRES);
-            KSPGMRESSetRestart(ksp, 100);
-            KSPSetTolerances(ksp, 1e-10, PETSC_DEFAULT, PETSC_DEFAULT, 1000);
-            KSPSetInitialGuessNonzero(ksp, PETSC_FALSE);
+            DREAM::FVM::Matrix Aw((PetscInt)Ntot, (PetscInt)Ntot, A_seq);
+            DREAM::FVM::MILU_PROVA inverter((len_t)Ntot, (len_t)Nhot, (len_t)Nre);
 
-            KSPGetPC(ksp, &pc);
-            PCSetType(pc, PCILU);
-            PCFactorSetLevels(pc, 1);
-            KSPSetFromOptions(ksp);
-
-            KSPSetUp(ksp);
-            KSPSolve(ksp, b_seq, x_ilu);
-
-            PetscInt its;
-            KSPConvergedReason reason;
-            KSPGetIterationNumber(ksp, &its);
-            KSPGetConvergedReason(ksp, &reason);
-            cout << "Path A (rank-0 PCILU + GMRES): its = " << its
-                 << ", " << (reason > 0 ? "converged" : "DIVERGED")
-                 << " (reason " << reason << ")" << endl;
-
-            KSPDestroy(&ksp);
+            try
+            {
+                inverter.Invert(&Aw, &b_seq, &x_ilu);
+                cout << "Path A (rank-0 MILU_PROVA): converged" << endl;
+            }
+            catch (const DREAM::FVM::FVMException &ex)
+            {
+                cout << "Path A (rank-0 MILU_PROVA): DIVERGED (" << ex.what() << ")" << endl;
+            }
+            // Aw wraps A_seq via the Matrix(m, n, Mat) constructor, which
+            // leaves 'allocated' false; Matrix::~Matrix() -> Destroy() is
+            // therefore a no-op here and never touches A_seq, which is
+            // MatDestroy'd explicitly below as usual.
         }
         double tPathA = MPI_Wtime() - tA0;
 
