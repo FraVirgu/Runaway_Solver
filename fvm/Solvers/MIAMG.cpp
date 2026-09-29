@@ -30,6 +30,8 @@ MIAMG::MIAMG(const len_t n) {
  */
 MIAMG::~MIAMG() {
     KSPDestroy(&this->ksp);
+    if (this->bWork) VecDestroy(&this->bWork);
+    if (this->xPrev) VecDestroy(&this->xPrev);
 }
 
 /**
@@ -38,7 +40,7 @@ MIAMG::~MIAMG() {
  * PETSC_OPTIONS via KSPSetFromOptions() below.
  *
  * Separated from Invert() so it runs exactly once, the same way
- * MILU_PROVA::ConfigureSolver() does -- the operator matrix is reset on
+ * MIILU::ConfigureSolver() does -- the operator matrix is reset on
  * every call to Invert(), but the preconditioner type/configuration is
  * chosen only the first time.
  *
@@ -61,7 +63,7 @@ MIAMG::~MIAMG() {
  * This amortises PCSetUp's cost (see the discussion around
  * TestHypreParallel.cpp: it does not shrink with more ranks, so it is worth
  * not paying on every timestep) at the cost of preconditioner staleness. As
- * with MILU_PROVA's now-removed -dream_ksp_reuse_pc experiment (which was
+ * with MIILU's now-removed -dream_ksp_reuse_pc experiment (which was
  * the N=infinity case of this and was found to destabilise the solve),
  * whether a finite N is acceptable for a given system is a question for
  * measurement, not assumption.
@@ -76,7 +78,8 @@ void MIAMG::ConfigureSolver() {
     KSPSetType(this->ksp, KSPGMRES);
     KSPGMRESSetRestart(this->ksp, 100);
     KSPSetTolerances(this->ksp, 1e-10, PETSC_DEFAULT, PETSC_DEFAULT, 1000);
-    KSPSetInitialGuessNonzero(this->ksp, PETSC_FALSE);
+    // Start from the previous timestep's solution (see Invert()).
+    KSPSetInitialGuessNonzero(this->ksp, PETSC_TRUE);
     // See the comment on this in TestHypreParallel.cpp: with a
     // preconditioner as aggressive as BoomerAMG, the preconditioned residual
     // can look converged well before the true residual has dropped, so
@@ -132,10 +135,26 @@ void MIAMG::Invert(Matrix *A, Vec *b, Vec *x) {
     KSPSetReusePreconditioner(this->ksp, rebuildNow ? PETSC_FALSE : PETSC_TRUE);
     this->callsSinceSetup++;
 
-    this->errorcode = KSPSolve(this->ksp, *b, *x);
+    // Invert() is called with b == x, so keep a copy of the RHS and seed x
+    // with the previous solution (zero on the very first call).
+    if (!this->bWork)
+        VecDuplicate(*b, &this->bWork);
+    VecCopy(*b, this->bWork);
+    if (this->xPrev)
+        VecCopy(this->xPrev, *x);
+    else
+        VecSet(*x, 0.0);
+
+    this->errorcode = KSPSolve(this->ksp, this->bWork, *x);
 
     KSPConvergedReason reason;
     KSPGetConvergedReason(this->ksp, &reason);
+
+    if (reason >= 0) {
+        if (!this->xPrev)
+            VecDuplicate(*x, &this->xPrev);
+        VecCopy(*x, this->xPrev);
+    }
 
     if (reason < 0) {
         PetscInt its;

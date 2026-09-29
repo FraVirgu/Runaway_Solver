@@ -11,7 +11,7 @@
  *
  * Unlike the rank-0-factor-then-distribute machinery in Main.cpp's else
  * branch (DistributeMatrixFromRank0 / DistributeVectorFromRank0 /
- * MILU_PROVA::ApplyILUPreconditioning), the two hypre paths need none of
+ * MIILU::ApplyILUPreconditioning), the two hypre paths need none of
  * that: the matrix is loaded directly in parallel with MatLoad on
  * PETSC_COMM_WORLD (PETSc's own row decomposition), and hypre factors its
  * preconditioner directly from that already-distributed matrix. Every

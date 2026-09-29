@@ -16,7 +16,7 @@
 // Linear solvers
 #include "FVM/Solvers/MIGMRES.hpp"
 #include "FVM/Solvers/MILU.hpp"
-#include "FVM/Solvers/MILU_prova.hpp"
+#include "FVM/Solvers/MIILU.hpp"
 #include "FVM/Solvers/MIAMG.hpp"
 #ifdef PETSC_HAVE_MKL_PARDISO
 #include "FVM/Solvers/MIMKL.hpp"
@@ -472,8 +472,8 @@ FVM::MatrixInverter *Solver::ConstructLinearSolver(const len_t N, enum OptionCon
     }
     else if (ls == OptionConstants::LINEAR_SOLVER_LU)
         return new FVM::MILU(N);
-    else if (ls == OptionConstants::LINEAR_SOLVER_LU_PROVA)
-        return new FVM::MILU_PROVA(N, this->Nhot, this->Nre);
+    else if (ls == OptionConstants::LINEAR_SOLVER_ILU)
+        return new FVM::MIILU(N, this->Nhot, this->Nre);
     else if (ls == OptionConstants::LINEAR_SOLVER_AMG)
         return new FVM::MIAMG(N);
     else if (ls == OptionConstants::LINEAR_SOLVER_MKL)

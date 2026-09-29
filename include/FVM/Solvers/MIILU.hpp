@@ -1,5 +1,5 @@
-#ifndef _DREAM_FVM_MATRIX_INVERTER_LU_PROVA_HPP
-#define _DREAM_FVM_MATRIX_INVERTER_LU_PROVA_HPP
+#ifndef _DREAM_FVM_MATRIX_INVERTER_MIILU_HPP
+#define _DREAM_FVM_MATRIX_INVERTER_MIILU_HPP
 
 #include <petscksp.h>
 #include "FVM/config.h"
@@ -23,7 +23,7 @@ namespace DREAM::FVM
      * rows, which couple one fluid unknown to an entire kinetic block, out of
      * the preconditioner applied to the kinetic block.
      */
-    class MILU_PROVA : public MatrixInverter
+    class MIILU : public MatrixInverter
     {
     private:
         len_t xn;   // total number of rows in the assembled system
@@ -42,8 +42,8 @@ namespace DREAM::FVM
         void ConfigureSplitKinetic();
 
     public:
-        MILU_PROVA(const len_t n, len_t Nhot, len_t Nre);
-        ~MILU_PROVA();
+        MIILU(const len_t n, len_t Nhot, len_t Nre);
+        ~MIILU();
 
         virtual void Invert(Matrix *, Vec *, Vec *) override;
 
@@ -57,4 +57,4 @@ namespace DREAM::FVM
     };
 }
 
-#endif /*_DREAM_FVM_MATRIX_INVERTER_LU_PROVA_HPP*/
+#endif /*_DREAM_FVM_MATRIX_INVERTER_MIILU_HPP*/

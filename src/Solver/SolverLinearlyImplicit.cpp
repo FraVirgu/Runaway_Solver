@@ -110,7 +110,7 @@ void SolverLinearlyImplicit::initialize_internal(
     for (len_t id : fre)
         this->Nre += this->unknown_equations->at(id)->NumberOfElements();
 
-    // Save the block sizes MILU_PROVA needs to reconstruct the same
+    // Save the block sizes MIILU needs to reconstruct the same
     // -dream_split populations index sets (is_fhot/is_fre/is_fluid) when
     // replaying the dumped matrices through a separate (e.g. parallel)
     // solver process, which has no EquationSystem of its own to recompute

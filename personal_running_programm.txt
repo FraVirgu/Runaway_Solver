@@ -25,6 +25,10 @@ PETSC_OPTIONS="-dream_split none -pc_type hypre -pc_hypre_type boomeramg -ksp_co
   mpirun -n 1 ./dreami ./dream_settings.h5
 
 
+  7 AMG with precondition build each n-iteration
+  PETSC_OPTIONS="-ksp_converged_reason -log_view :log_view_lag3.txt -dream_amg_lag_pc 3"   mpirun -n 1 ./dreami ./dream_settings.h5
+
+
 conda Environment
 cd /home/francesco-virgulti/Desktop/DREAM/build
 env LD_LIBRARY_PATH="/home/francesco-virgulti/Desktop/Masked_ROM/hazmath/lib:/usr/local/cuda/lib64" make

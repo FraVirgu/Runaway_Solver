@@ -9,7 +9,7 @@ namespace DREAM::FVM {
     /**
      * Matrix inverter using GMRES preconditioned by hypre's BoomerAMG,
      * applied to the whole system with no field splitting -- isolates the
-     * AMG preconditioner path on its own, separate from MILU_PROVA's
+     * AMG preconditioner path on its own, separate from MIILU's
      * fieldsplit/ILU experiments.
      */
     class MIAMG : public MatrixInverter {
@@ -23,6 +23,11 @@ namespace DREAM::FVM {
         // on every call; see the comment on ConfigureSolver().
         PetscInt lagPC = 1;
         PetscInt callsSinceSetup = 0;
+
+        // Work copy of the RHS (Invert() is called with b == x) and the
+        // previous solution, used as the nonzero initial guess.
+        Vec bWork = nullptr;
+        Vec xPrev = nullptr;
 
         void ConfigureSolver();
 

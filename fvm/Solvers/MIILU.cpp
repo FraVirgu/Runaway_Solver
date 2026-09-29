@@ -11,7 +11,7 @@
 #include "FVM/config.h"
 #include "FVM/FVMException.hpp"
 #include "FVM/Matrix.hpp"
-#include "FVM/Solvers/MILU_prova.hpp"
+#include "FVM/Solvers/MIILU.hpp"
 
 using namespace DREAM::FVM;
 
@@ -20,7 +20,7 @@ using namespace DREAM::FVM;
  *
  * n: Number of elements in solution vector.
  */
-MILU_PROVA::MILU_PROVA(const len_t n, len_t Nhot, len_t Nre)
+MIILU::MIILU(const len_t n, len_t Nhot, len_t Nre)
 {
     KSPCreate(PETSC_COMM_WORLD, &this->ksp);
     this->xn = n;
@@ -31,7 +31,7 @@ MILU_PROVA::MILU_PROVA(const len_t n, len_t Nhot, len_t Nre)
 /**
  * Destructor.
  */
-MILU_PROVA::~MILU_PROVA()
+MIILU::~MIILU()
 {
     // KSPDestroy(&this->ksp);
 }
@@ -66,7 +66,7 @@ static void SetDefaultOption(const char *name, const char *value)
  * for this system kappa is of order 1e8 after preconditioning, so 1e-12 or
  * tighter is unreachable and merely exhausts the iteration limit.
  */
-void MILU_PROVA::ConfigureOuter()
+void MIILU::ConfigureOuter()
 {
     KSPSetType(this->ksp, KSPFGMRES);
     KSPSetNormType(this->ksp, KSP_NORM_UNPRECONDITIONED);
@@ -82,7 +82,7 @@ void MILU_PROVA::ConfigureOuter()
  * unknown to an entire kinetic block and are dense, which is what the split
  * configurations below exist to isolate.
  */
-void MILU_PROVA::ConfigureMonolithic()
+void MIILU::ConfigureMonolithic()
 {
     SetDefaultOption("-pc_type", "ilu");
     SetDefaultOption("-pc_factor_levels", "0");
@@ -101,7 +101,7 @@ void MILU_PROVA::ConfigureMonolithic()
  * whose coarsening or factorisation would otherwise have to contend with rows
  * connected to every unknown.
  */
-void MILU_PROVA::ConfigureSplitKinetic()
+void MIILU::ConfigureSplitKinetic()
 {
     PC pc;
     IS is_kinetic, is_fluid;
@@ -174,7 +174,7 @@ void MILU_PROVA::ConfigureSplitKinetic()
  *   none      no splitting; -pc_type governs the whole system  (default)
  *   kinetic   kinetic block separated from fluid and scalar
  */
-void MILU_PROVA::ConfigureSolver()
+void MIILU::ConfigureSolver()
 {
     PetscInt Nhot = this->Nhot;
     PetscInt Nre = this->Nre;
@@ -198,14 +198,14 @@ void MILU_PROVA::ConfigureSolver()
         // here catches the case where those sizes were never set correctly.
         if (Nhot <= 0 || Nhot + Nre >= Ntot)
             throw FVMException(
-                "MILU_PROVA: invalid block sizes Nhot=%d Nre=%d (Ntot=%d).",
+                "MIILU: invalid block sizes Nhot=%d Nre=%d (Ntot=%d).",
                 (int)Nhot, (int)Nre, (int)Ntot);
 
         if (std::strcmp(split, "kinetic") == 0)
             this->ConfigureSplitKinetic();
         else
             throw FVMException(
-                "MILU_PROVA: unrecognised -dream_split '%s' "
+                "MIILU: unrecognised -dream_split '%s' "
                 "(expected none or kinetic).",
                 split);
     }
@@ -239,7 +239,7 @@ void MILU_PROVA::ConfigureSolver()
  * dropTol: entries of M^{-1} A_seq smaller than this in magnitude are
  *          treated as fill-in noise and discarded when sparsifying.
  */
-void MILU_PROVA::ApplyILUPreconditioning(
+void MIILU::ApplyILUPreconditioning(
     Mat A_seq, Vec b_seq, Mat *MA_seq, Vec *Mb_seq, PetscReal dropTol)
 {
     // ---- 1. ILU factorization ----
@@ -332,7 +332,7 @@ void MILU_PROVA::ApplyILUPreconditioning(
  *
  * Returns the combined KSPSetUp + KSPSolve wall-clock time in seconds.
  */
-double MILU_PROVA::Solve_GMRES(
+double MIILU::Solve_GMRES(
     Mat A, Vec b, Vec x, int step, int my_rank,
     PetscLogStage gmresSetupStage, PetscLogStage solveStage)
 {
@@ -391,7 +391,7 @@ double MILU_PROVA::Solve_GMRES(
  * b: Right-hand-side vector containing n elements.
  * x: Solution vector. Contains solution on return.
  */
-void MILU_PROVA::Invert(Matrix *A, Vec *b, Vec *x)
+void MIILU::Invert(Matrix *A, Vec *b, Vec *x)
 {
     // The matrix entries change every timestep, but its sparsity pattern does
     // not, so the operators are reset while the preconditioner structure is
@@ -416,7 +416,7 @@ void MILU_PROVA::Invert(Matrix *A, Vec *b, Vec *x)
         KSPGetIterationNumber(this->ksp, &its);
 
         throw FVMException(
-            "MILU_PROVA: linear solve did not converge after %d iterations "
+            "MIILU: linear solve did not converge after %d iterations "
             "(KSPConvergedReason %d: %s).",
             (int)its, (int)reason, KSPConvergedReasons[reason]);
     }

@@ -7,10 +7,10 @@
  *             GMRES iteration; the preconditioned operator M^{-1}A is never
  *             formed explicitly.
  *
- *   Path B -- "explicit preconditioning": MILU_PROVA::ApplyILUPreconditioning
+ *   Path B -- "explicit preconditioning": MIILU::ApplyILUPreconditioning
  *             factorises the same ILU preconditioner M and forms the
  *             explicit sparse operator MA = M^{-1}A and right-hand side
- *             Mb = M^{-1}b, then MILU_PROVA::Solve_GMRES runs *plain*
+ *             Mb = M^{-1}b, then MIILU::Solve_GMRES runs *plain*
  *             (PCNONE) GMRES on MA x = Mb.
  *
  * Both paths should converge to (approximately) the same x, since they are
@@ -40,7 +40,7 @@
 #include <iostream>
 
 #include "DREAM/Init.h"
-#include "FVM/Solvers/MILU_prova.hpp"
+#include "FVM/Solvers/MIILU.hpp"
 
 using namespace std;
 
@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
 
     Mat MA;
     Vec Mb;
-    DREAM::FVM::MILU_PROVA::ApplyILUPreconditioning(A, b, &MA, &Mb);
+    DREAM::FVM::MIILU::ApplyILUPreconditioning(A, b, &MA, &Mb);
 
     VecDuplicate(Mb, &x_explicit);
 
@@ -170,7 +170,7 @@ int main(int argc, char *argv[])
     PetscLogStageRegister("GMRES setup (explicit)", &gmresSetupStage);
     PetscLogStageRegister("Solve (explicit)", &solveStage);
 
-    DREAM::FVM::MILU_PROVA::Solve_GMRES(
+    DREAM::FVM::MIILU::Solve_GMRES(
         MA, Mb, x_explicit, step, my_rank, gmresSetupStage, solveStage);
 
     double tPathB = MPI_Wtime() - tB0;

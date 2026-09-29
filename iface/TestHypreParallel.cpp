@@ -12,7 +12,7 @@
  *      through a full DREAM run.
  *
  * Unlike TestHypre.cpp, this test has no rank-0-only serial baseline (no
- * MILU_PROVA Path A) -- there is no my_rank == 0 special-casing anywhere.
+ * MIILU Path A) -- there is no my_rank == 0 special-casing anywhere.
  * The matrix is loaded directly in
  * parallel with MatLoad on PETSC_COMM_WORLD (PETSc's own row
  * decomposition), and each preconditioner factors directly from that

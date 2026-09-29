@@ -18,7 +18,7 @@ target_link_libraries(testdistribute PUBLIC dream)
 set_target_properties(testdistribute PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 
 # Standalone serial (n=1) test comparing PETSc-managed ILU+GMRES against
-# explicit M^-1A/M^-1b preconditioning + plain GMRES (MILU_PROVA). Does not
+# explicit M^-1A/M^-1b preconditioning + plain GMRES (MIILU). Does not
 # touch Main.cpp or the dreami target.
 set(testiluCompare_files
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/iface/TestILUCompare.cpp"
