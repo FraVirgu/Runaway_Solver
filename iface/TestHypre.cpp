@@ -1,63 +1,33 @@
 /**
- * Standalone test comparing three GMRES preconditioning paths on the same
- * linear system:
+ * Standalone test comparing dreami's two production linear solvers on the
+ * same linear system:
  *
- *   1. Path A: dreami's own linear solver, DREAM::FVM::MIILU, called
- *      directly -- not a hand-copied replica of its KSP/PC setup, but the
- *      actual production class (fvm/Solvers/MIILU.cpp), so this path
- *      can never drift out of sync with what dreami itself runs. A_seq is
- *      wrapped in an FVM::Matrix (the Matrix(m, n, Mat) constructor, which
- *      takes ownership of an already-built PETSc Mat without copying it),
- *      and MIILU is constructed with the same Nhot/Nre block sizes
- *      dreami itself used, read back from petsc_block_sizes.txt (written
- *      by SolverLinearlyImplicit::initialize_internal for exactly this
- *      kind of external replay). Serial (rank 0 only, PETSC_COMM_SELF) --
- *      only factors a rank-local piece of the matrix, no parallel
- *      equivalent -- so this always runs first as the serial baseline.
- *      The -dream_split configuration (none/kinetic/populations) is
- *      selected the same way it is in dreami: via PETSC_OPTIONS.
- *   2. hypre/BoomerAMG, distributed (PETSC_COMM_WORLD, any rank count).
- *   3. Block-Jacobi with ILU sub-solver (PCBJACOBI / PCILU per block),
- *      distributed (PETSC_COMM_WORLD, any rank count).
+ *   1. DREAM::FVM::MIILU  (fvm/Solvers/MIILU.cpp)
+ *   2. DREAM::FVM::MIAMG  (fvm/Solvers/MIAMG.cpp, hypre/BoomerAMG)
  *
- * Unlike the rank-0-factor-then-distribute machinery in Main.cpp's else
- * branch (DistributeMatrixFromRank0 / DistributeVectorFromRank0 /
- * MIILU::ApplyILUPreconditioning), the BoomerAMG and block-Jacobi
- * paths need none of that: the matrix is loaded directly in parallel with
- * MatLoad on PETSC_COMM_WORLD (PETSc's own row decomposition), and each
- * preconditioner factors directly from that already-distributed matrix.
- * Every GMRES iteration then applies the preconditioner on the fly
- * (PCApply), exactly like PCILU does serially -- no dense matrix, no
- * explicit M^{-1}A, no rank-0 special-casing.
+ * Both are the actual production classes, called through Invert(), so this
+ * test cannot drift out of sync with what dreami itself runs. Their PC/KSP
+ * configuration is selected the same way as in dreami: via PETSC_OPTIONS /
+ * the command line (e.g. -dream_split, -dream_amg_lag_pc).
  *
- *   -pc_type hypre -pc_hypre_type boomeramg
+ * Serial only: must be launched with `mpirun -n 1` (or without mpirun);
+ * with more than one rank the program throws an error and exits.
  *
- * is exactly what this test hardcodes for path 2 (overridable from the
- * command line via PETSC_OPTIONS, same convention as everywhere else in
- * this project). Path 3 hardcodes
+ * The system is loaded from the same petsc_mat_serial_step1_iter1 /
+ * petsc_rhs_serial_step1_iter1 files as Main.cpp. MIILU needs the Nhot/Nre
+ * block sizes dreami used, read back from petsc_block_sizes.txt (written by
+ * SolverLinearlyImplicit::initialize_internal).
  *
- *   -pc_type bjacobi -sub_pc_type ilu -sub_pc_factor_levels 0
+ * For each solver the true residual ||Ax - b|| / ||b|| is computed
+ * independently of KSP's converged-reason flag, and the two solutions are
+ * then compared: ||x_amg - x_miilu|| / ||x_miilu||.
  *
- * one block per MPI rank by default (PCBJacobi), each block factored with
- * ILU(0) -- also overridable via PETSC_OPTIONS.
- *
- * Correctness is checked two ways for each distributed path:
- *   1. The true residual ||Ax - b|| / ||b||, computed independently of
- *      KSP's own converged-reason flag, on any rank count.
- *   2. When run with exactly 1 rank, ALSO compare against the Path A
- *      solution (x_ilu), as a sanity cross-check that the distributed path
- *      is converging to the same answer as the familiar PCILU path. This
- *      second check is skipped for n > 1, since PCILU has no well-defined
- *      distributed behaviour to compare against.
- *
- * Loads the same petsc_mat_serial_step1_iter1 / petsc_rhs_serial_step1_iter1
- * files as Main.cpp and TestDistribute.cpp. Does not touch Main.cpp:
- * separate executable (see iface/CMakeLists.txt, target testhypre).
+ * Separate executable (see iface/CMakeLists.txt, target testhypre).
  */
 
-#include <cstring>
 #include <fstream>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
 
@@ -65,89 +35,76 @@
 #include "DREAM/Init.h"
 #include "FVM/Matrix.hpp"
 #include "FVM/Solvers/MIILU.hpp"
+#include "FVM/Solvers/MIAMG.hpp"
 
 using namespace std;
 
-/**
- * Solve Ax = b with GMRES preconditioned by the given PC type (and, for
- * "hypre", the given hypre sub-type; for "bjacobi", each block is set up
- * with ILU(0) as its sub-solver). Prints iteration count/convergence on
- * rank 0 and returns the wall-clock KSPSetUp+KSPSolve time.
- */
-static double SolveWithPC(Mat A, Vec b, Vec x, const char *pcType,
-                          const char *hypreType, const char *label)
+/** True relative residual ||A x - b|| / ||b||. */
+static PetscReal TrueResidual(Mat A, Vec x, Vec b)
 {
-    KSP ksp;
-    PC pc;
-    KSPCreate(PETSC_COMM_WORLD, &ksp);
-    KSPSetOperators(ksp, A, A);
-    KSPSetType(ksp, KSPGMRES);
-    KSPGMRESSetRestart(ksp, 100);
-    KSPSetTolerances(ksp, 1e-10, PETSC_DEFAULT, PETSC_DEFAULT, 1000);
-    KSPSetInitialGuessNonzero(ksp, PETSC_FALSE);
-    // Track the TRUE (unpreconditioned) residual for the convergence test,
-    // not the preconditioned one. With a preconditioner as aggressive as
-    // BoomerAMG, the preconditioned residual can drop below rtol while the
-    // true ||Ax-b|| is still large -- KSPConvergedReason would then report
-    // "converged" even though the independent residual check below fails.
-    // This keeps KSP's own convergence decision consistent with that check.
-    KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
+    Vec r;
+    VecDuplicate(b, &r);
+    MatMult(A, x, r);
+    VecAXPY(r, -1.0, b);
 
-    KSPGetPC(ksp, &pc);
-    PCSetType(pc, pcType);
-    if (hypreType)
-        PCHYPRESetType(pc, hypreType);
-    if (strcmp(pcType, PCBJACOBI) == 0)
-    {
-        // Default sub-solver for bjacobi (one block per rank): ILU(0),
-        // matching PETSC_OPTIONS="-sub_pc_type ilu -sub_pc_factor_levels 0"
-        // from the command line. PCSetUp must run first so the per-block
-        // sub-KSPs exist to configure.
-        PCSetUp(pc);
-        KSP *subksp;
-        PetscInt nlocal, first;
-        PCBJacobiGetSubKSP(pc, &nlocal, &first, &subksp);
-        for (PetscInt i = 0; i < nlocal; i++)
-        {
-            PC subpc;
-            KSPGetPC(subksp[i], &subpc);
-            PCSetType(subpc, PCILU);
-            PCFactorSetLevels(subpc, 0);
-        }
-    }
-    KSPSetFromOptions(ksp); // command line / PETSC_OPTIONS may override any of the above
+    PetscReal resNorm, bNorm;
+    VecNorm(r, NORM_2, &resNorm);
+    VecNorm(b, NORM_2, &bNorm);
+    VecDestroy(&r);
+    return (bNorm > 0.0) ? resNorm / bNorm : resNorm;
+}
 
-    MPI_Barrier(PETSC_COMM_WORLD);
+/**
+ * Run one MatrixInverter on (A, b) -> x, print convergence, time and true
+ * residual. Returns true if Invert() did not throw.
+ */
+static bool RunSolver(DREAM::FVM::MatrixInverter &inverter, Mat A, Vec b, Vec x,
+                      PetscInt n, const char *label)
+{
+    const double tol = 1e-6;
+    bool ok = true;
+
+    DREAM::FVM::Matrix Aw(n, n, A); // wraps A, does not copy or own it
+    Vec bcopy;
+    VecDuplicate(b, &bcopy);
+    VecCopy(b, bcopy);
+
     double t0 = MPI_Wtime();
-    KSPSetUp(ksp);
-    KSPSolve(ksp, b, x);
-    MPI_Barrier(PETSC_COMM_WORLD);
+    try
+    {
+        inverter.Invert(&Aw, &bcopy, &x);
+    }
+    catch (const DREAM::FVM::FVMException &ex)
+    {
+        cout << label << ": DIVERGED (" << ex.what() << ")" << endl;
+        ok = false;
+    }
     double elapsed = MPI_Wtime() - t0;
 
-    PetscInt its;
-    KSPConvergedReason reason;
-    KSPGetIterationNumber(ksp, &its);
-    KSPGetConvergedReason(ksp, &reason);
+    PetscReal relRes = TrueResidual(A, x, b);
+    cout << label << ": " << (ok ? "converged" : "failed")
+         << ", time " << elapsed << " s"
+         << ", ||A*x - b|| / ||b|| = " << relRes
+         << (relRes <= tol ? "  (PASS)" : "  (FAIL)") << endl;
 
-    int my_rank;
-    MPI_Comm_rank(PETSC_COMM_WORLD, &my_rank);
-    if (my_rank == 0)
-        cout << label << ": its = " << its
-             << ", " << (reason > 0 ? "converged" : "DIVERGED")
-             << " (reason " << reason << ")"
-             << ", time " << elapsed << " s" << endl;
-
-    KSPDestroy(&ksp);
-    return elapsed;
+    VecDestroy(&bcopy);
+    return ok;
 }
 
 int main(int argc, char *argv[])
 {
     MPI_Init(&argc, &argv);
 
-    int my_rank, size;
-    MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
+    int size;
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+    if (size != 1)
+    {
+        cerr << "TestHypre: error: must be run with a single MPI rank "
+                "(mpirun -n 1), but was launched with "
+             << size << " ranks." << endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return 1;
+    }
 
     PETSC_COMM_WORLD = MPI_COMM_WORLD;
     dream_initialize();
@@ -156,35 +113,25 @@ int main(int argc, char *argv[])
     string matname = "petsc_mat_serial_step" + to_string(step) + "_iter1";
     string rhsname = "petsc_rhs_serial_step" + to_string(step) + "_iter1";
 
-    int haveStep = 0;
-    if (my_rank == 0)
-        haveStep = (access(matname.c_str(), F_OK) == 0 &&
-                    access(rhsname.c_str(), F_OK) == 0);
-    MPI_Bcast(&haveStep, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    if (!haveStep)
+    if (access(matname.c_str(), F_OK) != 0 || access(rhsname.c_str(), F_OK) != 0)
     {
-        if (my_rank == 0)
-            cerr << "Could not find " << matname << " / " << rhsname
-                 << " in the current directory -- run the serial simulation "
-                    "first to produce them."
-                 << endl;
+        cerr << "Could not find " << matname << " / " << rhsname
+             << " in the current directory -- run the serial simulation "
+                "first to produce them."
+             << endl;
         dream_finalize();
         MPI_Finalize();
         return 1;
     }
 
-    PetscViewer viewer;
-
-    // ---- load A, b already distributed: MatLoad/VecLoad on
-    // PETSC_COMM_WORLD split the on-disk (serial) data among ranks
-    // according to PETSc's own row decomposition. No rank-0 special-casing
-    // and no distribution helpers needed. ----
+    // ---- load A, b ----
     Mat A;
     Vec b;
+    PetscViewer viewer;
 
     PetscViewerBinaryOpen(PETSC_COMM_WORLD, matname.c_str(), FILE_MODE_READ, &viewer);
     MatCreate(PETSC_COMM_WORLD, &A);
-    MatSetType(A, MATAIJ);
+    MatSetType(A, MATSEQAIJ);
     MatLoad(A, viewer);
     PetscViewerDestroy(&viewer);
 
@@ -193,196 +140,75 @@ int main(int argc, char *argv[])
     VecLoad(b, viewer);
     PetscViewerDestroy(&viewer);
 
-    PetscInt M, N;
-    MatGetSize(A, &M, &N);
-    if (my_rank == 0)
-        cout << "Loaded system: " << M << " x " << N
-             << "  (running on " << size << " rank" << (size == 1 ? "" : "s") << ")" << endl;
+    PetscInt N;
+    MatGetSize(A, &N, nullptr);
+    cout << "Loaded system: " << N << " x " << N << endl;
 
-    // =============== Path A: rank-0-only DREAM::FVM::MIILU =============
-    // Runs first, before the parallel hypre path, so its iteration count
-    // and timing are available as the serial baseline for the comparison
-    // below. Independent of how many MPI ranks the job was launched with:
-    // rank 0 loads its own private copy of A, b on PETSC_COMM_SELF (never
-    // touching the already-distributed A, b below) and solves entirely by
-    // itself, exactly as in TestILUCompare.cpp's Path A. tLoadA times that
-    // load, tPathA the MIILU::Invert call, both rank-0 wall-clock.
-    //
-    // This calls dreami's actual production solver class directly -- not a
-    // hand-copied replica of its KSP/PC setup -- so it can never drift out
-    // of sync with what dreami itself runs. A_seq is wrapped in an
-    // FVM::Matrix via the Matrix(m, n, Mat) constructor (no copy of the
-    // underlying PETSc Mat), and MIILU is given the same Nhot/Nre
-    // block sizes dreami used, read back from petsc_block_sizes.txt
-    // (written by SolverLinearlyImplicit::initialize_internal for exactly
-    // this kind of external replay). The -dream_split configuration
-    // (none/kinetic/populations) and any PC/KSP overrides are selected the
-    // same way they are in dreami: via PETSC_OPTIONS/the command line,
-    // since MIILU::ConfigureSolver() calls KSPSetFromOptions() itself.
-    Vec x_ilu = nullptr; // only valid on rank 0; used below if size == 1
-    MPI_Barrier(PETSC_COMM_WORLD);
-    if (my_rank == 0)
+    // Nhot/Nre as dreami itself computed them for this matrix.
+    PetscInt Nhot = 0, Nre = 0;
     {
-        double tLoadA0 = MPI_Wtime();
-
-        Mat A_seq;
-        Vec b_seq;
-        PetscViewer viewer_seq;
-
-        PetscViewerBinaryOpen(PETSC_COMM_SELF, matname.c_str(), FILE_MODE_READ, &viewer_seq);
-        MatCreate(PETSC_COMM_SELF, &A_seq);
-        MatSetType(A_seq, MATSEQAIJ);
-        MatLoad(A_seq, viewer_seq);
-        PetscViewerDestroy(&viewer_seq);
-
-        PetscViewerBinaryOpen(PETSC_COMM_SELF, rhsname.c_str(), FILE_MODE_READ, &viewer_seq);
-        VecCreate(PETSC_COMM_SELF, &b_seq);
-        VecLoad(b_seq, viewer_seq);
-        PetscViewerDestroy(&viewer_seq);
-
-        double tLoadA = MPI_Wtime() - tLoadA0;
-
-        VecDuplicate(b_seq, &x_ilu);
-
-        PetscInt Ntot;
-        MatGetSize(A_seq, &Ntot, nullptr);
-
-        // Nhot/Nre as dreami itself computed them for this same matrix,
-        // read back from the file SolverLinearlyImplicit::initialize_internal
-        // writes for this purpose. MIILU's monolithic configuration
-        // (-dream_split none) does not use them, but its constructor and
-        // ConfigureSolver() require valid values regardless.
-        PetscInt Nhot = 0, Nre = 0;
+        ifstream blockSizesFile("petsc_block_sizes.txt");
+        string name;
+        PetscInt value;
+        while (blockSizesFile >> name >> value)
         {
-            ifstream blockSizesFile("petsc_block_sizes.txt");
-            string name;
-            PetscInt value;
-            while (blockSizesFile >> name >> value)
-            {
-                if (name == "Nhot")
-                    Nhot = value;
-                else if (name == "Nre")
-                    Nre = value;
-            }
-            if (!blockSizesFile.eof() && blockSizesFile.fail())
-                cerr << "Warning: could not parse petsc_block_sizes.txt -- "
-                        "Nhot/Nre default to 0."
-                     << endl;
+            if (name == "Nhot")
+                Nhot = value;
+            else if (name == "Nre")
+                Nre = value;
         }
-
-        double tA0 = MPI_Wtime();
-        {
-            DREAM::FVM::Matrix Aw((PetscInt)Ntot, (PetscInt)Ntot, A_seq);
-            DREAM::FVM::MIILU inverter((len_t)Ntot, (len_t)Nhot, (len_t)Nre);
-
-            try
-            {
-                inverter.Invert(&Aw, &b_seq, &x_ilu);
-                cout << "Path A (rank-0 MIILU): converged" << endl;
-            }
-            catch (const DREAM::FVM::FVMException &ex)
-            {
-                cout << "Path A (rank-0 MIILU): DIVERGED (" << ex.what() << ")" << endl;
-            }
-            // Aw wraps A_seq via the Matrix(m, n, Mat) constructor, which
-            // leaves 'allocated' false; Matrix::~Matrix() -> Destroy() is
-            // therefore a no-op here and never touches A_seq, which is
-            // MatDestroy'd explicitly below as usual.
-        }
-        double tPathA = MPI_Wtime() - tA0;
-
-        cout << "Path A load (rank-0 MatLoad+VecLoad): " << tLoadA << " s"
-             << "   solve: " << tPathA << " s" << endl;
-
-        MatDestroy(&A_seq);
-        VecDestroy(&b_seq);
+        if (!blockSizesFile.eof() && blockSizesFile.fail())
+            cerr << "Warning: could not parse petsc_block_sizes.txt -- "
+                    "Nhot/Nre default to 0."
+                 << endl;
     }
 
-    MPI_Barrier(PETSC_COMM_WORLD);
-    // =============== Distributed GMRES + hypre/BoomerAMG ===============
-    Vec x_amg;
+    Vec x_miilu, x_amg;
+    VecDuplicate(b, &x_miilu);
     VecDuplicate(b, &x_amg);
 
-#ifdef PETSC_HAVE_HYPRE
-    SolveWithPC(A, b, x_amg, PCHYPRE, "boomeramg", "hypre/boomeramg GMRES");
-#else
-    if (my_rank == 0)
-        cerr << "This PETSc build has no hypre support (PETSC_HAVE_HYPRE "
-                "undefined) -- cannot run the boomeramg preconditioner."
-             << endl;
-    dream_finalize();
-    MPI_Finalize();
-    return 1;
-#endif
-
-    MPI_Barrier(PETSC_COMM_WORLD);
-    // =============== Distributed GMRES + block-Jacobi(ILU) ===============
-    Vec x_bjacobi;
-    VecDuplicate(b, &x_bjacobi);
-    SolveWithPC(A, b, x_bjacobi, PCBJACOBI, nullptr, "bjacobi/ilu GMRES");
-
-    // ---- true residual, independent of KSP's own converged-reason ----
-    auto CheckTrueResidual = [&](Vec x, const char *label)
+    // ---- MIILU ----
     {
-        Vec r;
-        VecDuplicate(b, &r);
-        MatMult(A, x, r);    // r = A*x
-        VecAXPY(r, -1.0, b); // r = A*x - b
+        DREAM::FVM::MIILU inverter((len_t)N, (len_t)Nhot, (len_t)Nre);
+        RunSolver(inverter, A, b, x_miilu, N, "MIILU");
+    }
 
-        PetscReal resNorm, bNorm;
-        VecNorm(r, NORM_2, &resNorm);
-        VecNorm(b, NORM_2, &bNorm);
-        PetscReal relRes = (bNorm > 0.0) ? resNorm / bNorm : resNorm;
+    // MIILU registers its defaults (-pc_type ilu, -pc_factor_levels 0) in the
+    // global PETSc options database, and MIAMG's KSPSetFromOptions() would
+    // then pick them up and silently replace BoomerAMG by ILU. Remove them
+    // unless the user supplied them explicitly for MIAMG via PETSC_OPTIONS
+    // (in which case they were set before MIILU ran and are indistinguishable,
+    // so pass MIAMG-specific overrides with -pc_hypre_* only).
+    PetscOptionsClearValue(NULL, "-pc_type");
+    PetscOptionsClearValue(NULL, "-pc_factor_levels");
+
+    // ---- MIAMG ----
+    {
+        DREAM::FVM::MIAMG inverter((len_t)N);
+        RunSolver(inverter, A, b, x_amg, N, "MIAMG");
+    }
+
+    // ---- compare the two solutions ----
+    {
+        Vec diff;
+        VecDuplicate(x_miilu, &diff);
+        VecWAXPY(diff, -1.0, x_miilu, x_amg); // diff = x_amg - x_miilu
+
+        PetscReal diffNorm, refNorm;
+        VecNorm(diff, NORM_2, &diffNorm);
+        VecNorm(x_miilu, NORM_2, &refNorm);
+        PetscReal relError = (refNorm > 0.0) ? diffNorm / refNorm : diffNorm;
 
         const double tol = 1e-6;
-        if (my_rank == 0)
-            cout << "||A*" << label << " - b|| / ||b|| = " << relRes
-                 << (relRes <= tol ? "  (PASS)" : "  (FAIL)") << endl;
-
-        VecDestroy(&r);
-    };
-    CheckTrueResidual(x_amg, "x_amg");
-    CheckTrueResidual(x_bjacobi, "x_bjacobi");
-
-    // ---- Path A cross-check: only meaningful when size == 1, since x_ilu
-    // then has the same layout as x_amg / x_bjacobi. ----
-    if (my_rank == 0)
-    {
-        auto CheckAgainstPathA = [&](Vec x, const char *label)
-        {
-            if (size != 1)
-            {
-                cout << "(" << label << " vs x_ilu comparison skipped: running with "
-                     << size << " ranks, not 1)" << endl;
-                return;
-            }
-
-            Vec diff;
-            VecDuplicate(x_ilu, &diff);
-            VecWAXPY(diff, -1.0, x_ilu, x);
-
-            PetscReal diffNorm, refNorm;
-            VecNorm(diff, NORM_2, &diffNorm);
-            VecNorm(x_ilu, NORM_2, &refNorm);
-            PetscReal relError = (refNorm > 0.0) ? diffNorm / refNorm : diffNorm;
-
-            const double tol = 1e-6;
-            cout << "||" << label << " - x_ilu|| / ||x_ilu|| = " << relError
-                 << (relError <= tol ? "  (MATCH)" : "  (MISMATCH)") << endl;
-
-            VecDestroy(&diff);
-        };
-
-        CheckAgainstPathA(x_amg, "x_amg");
-        CheckAgainstPathA(x_bjacobi, "x_bjacobi");
-
-        VecDestroy(&x_ilu);
+        cout << "||x_amg - x_miilu|| / ||x_miilu|| = " << relError
+             << (relError <= tol ? "  (MATCH)" : "  (MISMATCH)") << endl;
+        VecDestroy(&diff);
     }
 
     MatDestroy(&A);
     VecDestroy(&b);
+    VecDestroy(&x_miilu);
     VecDestroy(&x_amg);
-    VecDestroy(&x_bjacobi);
 
     dream_finalize();
     MPI_Finalize();

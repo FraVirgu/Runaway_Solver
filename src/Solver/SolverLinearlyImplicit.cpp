@@ -33,6 +33,7 @@
 #include "DREAM/OutputGeneratorSFile.hpp"
 #include "DREAM/Settings/OptionConstants.hpp"
 #include "DREAM/Solver/SolverLinearlyImplicit.hpp"
+#include <chrono>
 
 using namespace DREAM;
 using namespace std;
@@ -178,6 +179,7 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
 
         real_t *S;
         VecGetArray(petsc_S, &S);
+
         this->timeKeeper->StartTimer(timerMatrix);
         BuildMatrix(t, dt, matrix, S);
         this->timeKeeper->StopTimer(timerMatrix);
@@ -212,14 +214,21 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         }
 
         // Apply preconditioner (if enabled)
-        this->Precondition(matrix, petsc_S);
+        // this->Precondition(matrix, petsc_S);
 
+        auto start = std::chrono::steady_clock::now();
         this->timeKeeper->StartTimer(timerInvert);
         inverter->Invert(matrix, &petsc_S, &petsc_S);
         this->timeKeeper->StopTimer(timerInvert);
 
+        if (this->nTimeStep == 1)
+        {
+            auto end = std::chrono::steady_clock::now();
+            cout << "iter_0:time " << std::chrono::duration<double>(end - start).count() << " s" << endl;
+        }
+
         // Undo preconditioner (if enabled)
-        this->UnPrecondition(petsc_S);
+        // this->UnPrecondition(petsc_S);
 
         // Store solution
         unknowns->Store(this->nontrivial_unknowns, petsc_S);
