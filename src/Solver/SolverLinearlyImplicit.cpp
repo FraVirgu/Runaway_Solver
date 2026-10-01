@@ -70,8 +70,16 @@ SolverLinearlyImplicit::~SolverLinearlyImplicit()
  * Initialize the solver.
  */
 void SolverLinearlyImplicit::initialize_internal(
-    const len_t size, std::vector<len_t> &)
+    const len_t size, std::vector<len_t> &unknownIds)
 {
+    PetscBool kineticOnly = PETSC_TRUE;
+    PetscOptionsHasName(NULL, NULL, "-dream_kinetic_only", &kineticOnly);
+    if (kineticOnly)
+    {
+        this->initialize_kinetic_only(size, unknownIds);
+        return;
+    }
+
     this->matrix = new FVM::BlockMatrix();
 
     std::vector<len_t> fhot, fre, fluid;
@@ -127,6 +135,100 @@ void SolverLinearlyImplicit::initialize_internal(
 
     VecCreateSeq(PETSC_COMM_WORLD, size, &this->petsc_S);
 }
+/**
+ * Initialize the solver with a system that contains only the kinetic
+ * unknowns, f_hot and f_re. Selected with -dream_kinetic_only.
+ *
+ * The matrix has f_hot in rows [0, Nhot) and f_re in [Nhot, Nhot+Nre)
+ * and nothing else; its size is Nhot+Nre. The other unknowns (the fluid
+ * and scalar quantities) take no part in the system at all: they are not
+ * in the matrix, and the terms through which the kinetic equations depend
+ * on them (the sources that are proportional to n_re, n_tot, n_i and
+ * S_particle) are dropped, not moved to the right-hand side. The system
+ * that is solved is therefore
+ *
+ *   A_kk x_k = b_k,
+ *
+ * where b_k only holds the terms of the kinetic equations that do not
+ * depend on any unknown. The other unknowns are not evolved.
+ *
+ * Implementation: the solver's own list of non-trivial unknowns (and the
+ * matrix size) is narrowed to the kinetic ones, so that BuildMatrix(),
+ * Store() and RestoreSolution() only see them, and BuildMatrix() is told
+ * to ignore operators applied to unknowns outside the matrix
+ * (dropNonMatrixTerms). The EquationSystem's list, used for output, is
+ * unaffected.
+ *
+ * Do not combine with -dream_split populations or kinetic: the fluid
+ * block those use no longer exists.
+ */
+void SolverLinearlyImplicit::initialize_kinetic_only(
+    const len_t, std::vector<len_t> &)
+{
+    this->matrix = new FVM::BlockMatrix();
+
+    std::vector<len_t> fhot, fre;
+    for (len_t id : nontrivial_unknowns)
+    {
+        const std::string &nm = unknowns->GetUnknown(id)->GetName();
+        if (nm == OptionConstants::UQTY_F_HOT)
+            fhot.push_back(id);
+        else if (nm == OptionConstants::UQTY_F_RE)
+            fre.push_back(id);
+    }
+
+    if (fhot.empty() && fre.empty())
+        throw SolverException(
+            "-dream_kinetic_only: the equation system contains no kinetic "
+            "unknowns (f_hot, f_re).");
+
+    // f_hot first, then f_re: the order of the matrix blocks, and also the
+    // order in which unknowns->Store() reads the solution vector.
+    std::vector<len_t> kinetic = fhot;
+    kinetic.insert(kinetic.end(), fre.begin(), fre.end());
+
+    // From here on, the solver only sees the kinetic unknowns, and terms
+    // that depend on any other unknown are left out of the system.
+    this->nontrivial_unknowns = kinetic;
+    this->dropNonMatrixTerms = true;
+
+    for (len_t id : kinetic)
+    {
+        UnknownQuantityEquation *eqn = this->unknown_equations->at(id);
+        unknownToMatrixMapping[id] =
+            matrix->CreateSubEquation(eqn->NumberOfElements(), eqn->NumberOfNonZeros(), id);
+    }
+
+    matrix->ConstructSystem();
+
+    this->Nhot = 0;
+    for (len_t id : fhot)
+        this->Nhot += this->unknown_equations->at(id)->NumberOfElements();
+
+    this->Nre = 0;
+    for (len_t id : fre)
+        this->Nre += this->unknown_equations->at(id)->NumberOfElements();
+
+    const len_t sizeKinetic = this->Nhot + this->Nre;
+    this->matrix_size = sizeKinetic;
+
+    // Same file as in initialize_internal(), here with Ntot = Nhot+Nre.
+    {
+        std::ofstream blockSizesFile("petsc_block_sizes.txt");
+        blockSizesFile << "Nhot " << this->Nhot << "\n";
+        blockSizesFile << "Nre " << this->Nre << "\n";
+        blockSizesFile << "Ntot " << sizeKinetic << "\n";
+    }
+
+    if (this->Verbose())
+        cout << "Kinetic-only system: " << sizeKinetic << " unknowns (f_hot "
+             << this->Nhot << ", f_re " << this->Nre << ")" << endl;
+
+    this->SelectLinearSolver(sizeKinetic);
+
+    VecCreateSeq(PETSC_COMM_WORLD, sizeKinetic, &this->petsc_S);
+}
+
 /**
  * Set the initial guess for the linear solver.
  *
@@ -213,8 +315,8 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
             PetscViewerDestroy(&rhsViewer);
         }
 
-        // Apply preconditioner (if enabled)
-        // this->Precondition(matrix, petsc_S);
+        // Scale the matrix and RHS (if -dream_scale is set)
+        this->Scale(matrix, petsc_S);
 
         auto start = std::chrono::steady_clock::now();
         this->timeKeeper->StartTimer(timerInvert);
@@ -227,8 +329,8 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
             cout << "iter_0:time " << std::chrono::duration<double>(end - start).count() << " s" << endl;
         }
 
-        // Undo preconditioner (if enabled)
-        // this->UnPrecondition(petsc_S);
+        // Undo the scaling on the solution
+        this->Unscale(petsc_S);
 
         // Store solution
         unknowns->Store(this->nontrivial_unknowns, petsc_S);

@@ -188,6 +188,18 @@ int main(int argc, char *argv[])
         RunSolver(inverter, A, b, x_amg, N, "MIAMG");
     }
 
+    // ---- save both solutions (PETSc binary, same format as dreami's
+    // petsc_solution_final_step) ----
+    auto SaveSolution = [](Vec x, const char *filename)
+    {
+        PetscViewer sv;
+        PetscViewerBinaryOpen(PETSC_COMM_WORLD, filename, FILE_MODE_WRITE, &sv);
+        VecView(x, sv);
+        PetscViewerDestroy(&sv);
+    };
+    SaveSolution(x_miilu, "petsc_solution_miilu");
+    SaveSolution(x_amg, "petsc_solution_amg");
+
     // ---- compare the two solutions ----
     {
         Vec diff;

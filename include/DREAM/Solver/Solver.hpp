@@ -34,6 +34,14 @@ namespace DREAM
     public:
         typedef void (*iteration_finished_func_t)(Simulation *);
 
+        // Matrix scaling applied by Scale()
+        enum class ScaleMode
+        {
+            None,
+            Diag,
+            Ruiz
+        };
+
     protected:
         FVM::UnknownQuantityHandler *unknowns;
         // List of equations associated with unknowns (owned by the 'EquationSystem')
@@ -69,6 +77,16 @@ namespace DREAM
         // Convergence checker for linear solver (GMRES primarily)
         ConvergenceChecker *convChecker = nullptr, *eConvChecker = nullptr;
         DiagonalPreconditioner *diag_prec = nullptr;
+
+        // Row/column scaling A' = L A R applied to the matrix before it is
+        // handed to the linear solver (see Scale()). The mode is
+        // read once from -dream_scale (none|diag|ruiz, default none).
+        // L scales the rows (and the RHS); R scales the columns, so the
+        // solution of the scaled system is x' = R^{-1} x and
+        // Unscale() multiplies it back by R.
+        ScaleMode scaleMode = ScaleMode::None;
+        bool scaleModeRead = false;
+        Vec scaleL = nullptr, scaleR = nullptr;
         FVM::MatrixInverter *inverter = nullptr;
         ExternalIterator *extiter = nullptr;
 
@@ -82,6 +100,11 @@ namespace DREAM
 
         len_t Nhot;
         len_t Nre;
+
+        // If true, BuildMatrix() ignores every operator that is applied to
+        // an unknown which is not in the matrix, instead of moving it to
+        // the right-hand side. Set by the kinetic-only initialisation.
+        bool dropNonMatrixTerms = false;
 
         /*FVM::DurationTimer
             timerTot, timerCqh, timerREFluid, timerRebuildTerms;*/
@@ -140,8 +163,10 @@ namespace DREAM
         virtual void SetInitialGuess(const real_t *) = 0;
         virtual void Solve(const real_t t, const real_t dt) = 0;
 
-        void Precondition(FVM::Matrix *, Vec);
-        void UnPrecondition(Vec);
+        static void BuildScaling(Mat A, ScaleMode mode, Vec L, Vec R);
+
+        void Scale(FVM::Matrix *, Vec);
+        void Unscale(Vec);
         bool Verbose() const { return this->verbose; }
 
         virtual void PrintTimings() = 0;

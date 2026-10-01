@@ -2,6 +2,7 @@
  * Implementation of common routines for the 'Solver' routines.
  */
 
+#include <cstring>
 #include <iostream>
 
 #include <vector>
@@ -62,6 +63,10 @@ Solver::~Solver()
 
     if (this->diag_prec != nullptr)
         delete this->diag_prec;
+    if (this->scaleL != nullptr)
+        VecDestroy(&this->scaleL);
+    if (this->scaleR != nullptr)
+        VecDestroy(&this->scaleR);
     if (this->extiter != nullptr)
         delete this->extiter;
 
@@ -182,8 +187,11 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
                 // "trivial" unknown quantity, meaning it does not appear in the
                 // equation system matrix. We therefore build it as part of the
                 // RHS vector.
+                //
+                // (In kinetic-only mode these terms are dropped altogether:
+                // see SolverLinearlyImplicit::initialize_kinetic_only().)
             }
-            else
+            else if (!this->dropNonMatrixTerms)
             {
                 PetscInt vecoffs = mat->GetOffset(matUqnId);
                 const real_t *data = unknowns->GetUnknownData(it->first);
@@ -355,31 +363,144 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
     solver_timeKeeper->StopTimer(timerTot);
 }
 
-/**
- * Precondition the given matrix and RHS vector. This can improve
- * conditioning of the equation system to solve and should be called
- * on each solve (if enabled).
- */
-void Solver::Precondition(FVM::Matrix *mat, Vec rhs)
+static const char *ScaleName(Solver::ScaleMode s)
 {
-    if (this->diag_prec == nullptr)
-        return;
-
-    this->diag_prec->RescaleMatrix(mat);
-    this->diag_prec->RescaleRHSVector(rhs);
+    return s == Solver::ScaleMode::None ? "none" : s == Solver::ScaleMode::Diag ? "diag" : "ruiz";
 }
 
 /**
- * Transform the given solution, obtained from a preconditioned
- * equation system, so that it uses the same normalizations as
- * the rest of the code.
+ * Build the scaling vectors L (rows) and R (columns) for A' = L A R.
+ *   none  L = R = 1
+ *   diag  L = 1/diag(A), R = 1   (zero diagonal entries left unscaled)
+ *   ruiz  5 sweeps of simultaneous row/column infinity-norm equilibration:
+ *         L <- L / sqrt(max_j |a_ij|),  R <- R / sqrt(max_i |a_ij|)
  */
-void Solver::UnPrecondition(Vec x)
+void Solver::BuildScaling(Mat A, ScaleMode mode, Vec L, Vec R)
 {
-    if (this->diag_prec == nullptr)
+    VecSet(L, 1.0);
+    VecSet(R, 1.0);
+    if (mode == ScaleMode::None)
         return;
 
-    this->diag_prec->UnscaleUnknownVector(x);
+    if (mode == ScaleMode::Diag)
+    {
+        MatGetDiagonal(A, L);
+        VecAbs(L);
+        const PetscScalar *d;
+        PetscScalar *l;
+        PetscInt n;
+        VecGetLocalSize(L, &n);
+        VecGetArrayRead(L, &d);
+        VecGetArray(L, &l);
+        for (PetscInt i = 0; i < n; i++)
+            l[i] = d[i] > 0.0 ? 1.0 / d[i] : 1.0;
+        VecRestoreArrayRead(L, &d);
+        VecRestoreArray(L, &l);
+        return;
+    }
+
+    // Ruiz
+    Mat W, Wt = nullptr;
+    MatDuplicate(A, MAT_COPY_VALUES, &W);
+    Vec rmax, cmax;
+    VecDuplicate(L, &rmax);
+    VecDuplicate(R, &cmax);
+    for (int it = 0; it < 5; it++)
+    {
+        MatGetRowMaxAbs(W, rmax, nullptr);
+        if (Wt)
+            MatTranspose(W, MAT_REUSE_MATRIX, &Wt);
+        else
+            MatTranspose(W, MAT_INITIAL_MATRIX, &Wt);
+        MatGetRowMaxAbs(Wt, cmax, nullptr);
+
+        for (Vec *v : {&rmax, &cmax})
+        {
+            PetscScalar *a;
+            PetscInt n;
+            VecGetLocalSize(*v, &n);
+            VecGetArray(*v, &a);
+            for (PetscInt i = 0; i < n; i++)
+                a[i] = a[i] > 0.0 ? 1.0 / PetscSqrtReal(a[i]) : 1.0;
+            VecRestoreArray(*v, &a);
+        }
+        MatDiagonalScale(W, rmax, cmax);
+        VecPointwiseMult(L, L, rmax);
+        VecPointwiseMult(R, R, cmax);
+    }
+    VecDestroy(&rmax);
+    VecDestroy(&cmax);
+    MatDestroy(&W);
+    MatDestroy(&Wt);
+}
+
+/**
+ * Scale the given matrix and RHS vector by row/column scaling,
+ *
+ *   A x = b   ->   (L A R) x' = L b,   x = R x'
+ *
+ * so that the rows (and, for Ruiz, the columns) of the matrix are on
+ * comparable scales before it is handed to the linear solver. The
+ * kinetic rows of the DREAM matrix differ by many orders of magnitude,
+ * which AMG in particular does not tolerate (see Unscale() for the
+ * matching back-transformation).
+ *
+ * The scaling is selected once, from -dream_scale (none|diag|ruiz,
+ * default none), and recomputed on every call, since the matrix entries
+ * change every timestep. The matrix is scaled in place.
+ *
+ * mat: Matrix to scale (in place).
+ * rhs: Right-hand side vector to scale (in place).
+ */
+void Solver::Scale(FVM::Matrix *mat, Vec rhs)
+{
+    if (!this->scaleModeRead)
+    {
+        char name[16] = "none";
+        PetscOptionsGetString(NULL, NULL, "-dream_scale", name, sizeof(name), NULL);
+
+        if (strcmp(name, "none") == 0)
+            this->scaleMode = ScaleMode::None;
+        else if (strcmp(name, "diag") == 0)
+            this->scaleMode = ScaleMode::Diag;
+        else if (strcmp(name, "ruiz") == 0)
+            this->scaleMode = ScaleMode::Ruiz;
+        else
+            throw SolverException(
+                "Unrecognised -dream_scale '%s' (expected none, diag or ruiz).", name);
+
+        this->scaleModeRead = true;
+        if (this->verbose)
+            cout << "Matrix scaling: " << ScaleName(this->scaleMode) << endl;
+    }
+
+    if (this->scaleMode == ScaleMode::None)
+        return;
+
+    Mat A = mat->mat();
+
+    // L has the layout of the rows, R that of the columns.
+    if (this->scaleL == nullptr)
+        MatCreateVecs(A, &this->scaleR, &this->scaleL);
+
+    BuildScaling(A, this->scaleMode, this->scaleL, this->scaleR);
+    MatDiagonalScale(A, this->scaleL, this->scaleR);
+    VecPointwiseMult(rhs, this->scaleL, rhs);
+}
+
+/**
+ * Transform the solution of the scaled system back to the original
+ * variables: x = R x'. Must be called after the linear solve whenever
+ * Scale() was called before it.
+ *
+ * With -dream_scale diag, R = 1 and this is a no-op.
+ */
+void Solver::Unscale(Vec x)
+{
+    if (this->scaleMode == ScaleMode::None || this->scaleR == nullptr)
+        return;
+
+    VecPointwiseMult(x, this->scaleR, x);
 }
 
 /**

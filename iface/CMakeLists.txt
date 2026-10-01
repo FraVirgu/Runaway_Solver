@@ -63,6 +63,23 @@ add_executable(testhypreparallel ${testhypreparallel_files})
 target_link_libraries(testhypreparallel PUBLIC dream)
 set_target_properties(testhypreparallel PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 
+# Kinetic-block-only tests: solve A_kk x_k = b_k - A_kf x_f with GMRES +
+# hypre/BoomerAMG, the fluid/scalar unknowns x_f taken from a reference
+# solution. Same source, built twice: the serial one enforces a single MPI
+# rank, the parallel one runs on any rank count.
+set(testkinetichypre_source
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/iface/TestKineticHypre.cpp"
+)
+
+add_executable(testkinetichypreserial ${testkinetichypre_source})
+target_compile_definitions(testkinetichypreserial PRIVATE KINETIC_SERIAL)
+target_link_libraries(testkinetichypreserial PUBLIC dream)
+set_target_properties(testkinetichypreserial PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+
+add_executable(testkinetichypreparallel ${testkinetichypre_source})
+target_link_libraries(testkinetichypreparallel PUBLIC dream)
+set_target_properties(testkinetichypreparallel PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+
 #if (INTERPROC_OPTIM AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
 #    include(CheckIPOSupported)
 #    # Clang does not support IPO (although Clang++ does), so we need
