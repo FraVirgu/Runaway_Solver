@@ -2,6 +2,7 @@
  * Implementation of common routines for the 'Solver' routines.
  */
 
+#include <chrono>
 #include <cstring>
 #include <iostream>
 
@@ -306,24 +307,66 @@ void Solver::RegisterCallback_IterationFinished(
  */
 void Solver::RebuildTerms(const real_t t, const real_t dt)
 {
+    // Optional log of what is rebuilt, with the time each part takes:
+    //   -dream_log_rebuild      log the first call
+    //   -dream_log_rebuild N    log the first N calls
+    static PetscInt nLog = -1;
+    static PetscInt nCalls = 0;
+    if (nLog < 0)
+    {
+        PetscBool set = PETSC_FALSE;
+        PetscOptionsHasName(NULL, NULL, "-dream_log_rebuild", &set);
+        nLog = 0;
+        if (set)
+        {
+            nLog = 1;
+            PetscOptionsGetInt(NULL, NULL, "-dream_log_rebuild", &nLog, NULL);
+        }
+    }
+    nCalls++;
+    const bool log = (nCalls <= nLog);
+
+    typedef std::chrono::steady_clock clk;
+    auto ms = [](clk::time_point a, clk::time_point b)
+    { return std::chrono::duration<double, std::milli>(b - a).count(); };
+
+    if (log)
+        printf("\n[rebuild] call %d: t = %g, dt = %g\n", (int)nCalls, (double)t, (double)dt);
+
     solver_timeKeeper->StartTimer(timerTot);
 
+    clk::time_point t0 = clk::now();
     this->ionHandler->Rebuild();
     // Rebuild ionHandler, collision handlers and RunawayFluid
+    if (log)
+        printf("[rebuild]  1. IonHandler                       %9.3f ms\n", ms(t0, clk::now()));
 
     solver_timeKeeper->StartTimer(timerCqh);
+    t0 = clk::now();
     if (this->cqh_hottail != nullptr)
         this->cqh_hottail->Rebuild();
+    if (log)
+        printf("[rebuild]  2. collision handler, hot-tail     %s%9.3f ms\n",
+               this->cqh_hottail != nullptr ? "" : "(none) ", ms(t0, clk::now()));
+    t0 = clk::now();
     if (this->cqh_runaway != nullptr)
         this->cqh_runaway->Rebuild();
+    if (log)
+        printf("[rebuild]  3. collision handler, runaway      %s%9.3f ms\n",
+               this->cqh_runaway != nullptr ? "" : "(none) ", ms(t0, clk::now()));
     solver_timeKeeper->StopTimer(timerCqh);
 
     solver_timeKeeper->StartTimer(timerREFluid);
+    t0 = clk::now();
     this->REFluid->Rebuild(t);
+    if (log)
+        printf("[rebuild]  4. RunawayFluid                     %9.3f ms\n", ms(t0, clk::now()));
     solver_timeKeeper->StopTimer(timerREFluid);
 
     solver_timeKeeper->StartTimer(timerRebuildTerms);
     // Update prescribed quantities and external unknowns
+    if (log)
+        printf("[rebuild]  5. predetermined unknowns (rebuilt and stored):\n");
     const len_t N = unknowns->Size();
     for (len_t i = 0; i < N; i++)
     {
@@ -332,30 +375,60 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
 
         if (eqn->IsPredetermined())
         {
+            t0 = clk::now();
             eqn->RebuildEquations(t, dt, unknowns);
             FVM::PredeterminedParameter *pp = eqn->GetPredetermined();
             uqty->Store(pp->GetData(), 0, true);
+            if (log)
+                printf("[rebuild]       %-12s (%s) %9.3f ms\n", uqty->GetName().c_str(),
+                       eqn->GetDescription().c_str(), ms(t0, clk::now()));
         }
     }
 
     solver_timeKeeper->StartTimer(timerSPIHandler);
     if (this->SPI != nullptr)
     {
+        t0 = clk::now();
         this->SPI->Rebuild(dt, t);
+        if (log)
+            printf("[rebuild]  6. SPIHandler                       %9.3f ms\n", ms(t0, clk::now()));
     }
+    else if (log)
+        printf("[rebuild]  6. SPIHandler                       (none)\n");
     solver_timeKeeper->StopTimer(timerSPIHandler);
 
     if (this->bootstrap != nullptr)
+    {
+        t0 = clk::now();
         this->bootstrap->Rebuild();
+        if (log)
+            printf("[rebuild]  7. BootstrapCurrent                 %9.3f ms\n", ms(t0, clk::now()));
+    }
+    else if (log)
+        printf("[rebuild]  7. BootstrapCurrent                 (none)\n");
 
+    if (log)
+        printf("[rebuild]  8. equation operators of the %d non-trivial unknown(s):\n",
+               (int)nontrivial_unknowns.size());
     for (len_t i = 0; i < nontrivial_unknowns.size(); i++)
     {
         len_t uqnId = nontrivial_unknowns[i];
         UnknownQuantityEquation *eqn = unknown_equations->at(uqnId);
 
+        if (log)
+            printf("[rebuild]       equation for %s: %s\n",
+                   unknowns->GetUnknown(uqnId)->GetName().c_str(),
+                   eqn->GetDescription().c_str());
+
         for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
         {
+            t0 = clk::now();
             it->second->RebuildTerms(t, dt, unknowns);
+            if (log)
+                printf("[rebuild]         operator on %-10s %s, ~%d nnz/row  %9.3f ms\n",
+                       unknowns->GetUnknown(it->first)->GetName().c_str(),
+                       it->second->HasTransientTerm() ? "(transient)" : "           ",
+                       (int)it->second->GetNumberOfNonZerosPerRow(), ms(t0, clk::now()));
         }
     }
 
@@ -365,7 +438,8 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
 
 static const char *ScaleName(Solver::ScaleMode s)
 {
-    return s == Solver::ScaleMode::None ? "none" : s == Solver::ScaleMode::Diag ? "diag" : "ruiz";
+    return s == Solver::ScaleMode::None ? "none" : s == Solver::ScaleMode::Diag ? "diag"
+                                                                                : "ruiz";
 }
 
 /**
