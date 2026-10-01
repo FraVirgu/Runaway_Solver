@@ -36,7 +36,7 @@ set(fvm_core_headers
 )
 set(fvm_equation
     "${PROJECT_SOURCE_DIR}/fvm/Equation/AdvectionTerm.cpp"
-    "${PROJECT_SOURCE_DIR}/fvm/Equation/AdvectionDiffusionTerm.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Equation/AdvectionDiffusionTerm.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/AdvectionInterpolationCoefficient.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/BoundaryConditions/PXiAdvectionDiffusionBoundaryCondition.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/BoundaryConditions/PXiExternalKineticKinetic.cpp"
@@ -46,7 +46,7 @@ set(fvm_equation
     "${PROJECT_SOURCE_DIR}/fvm/Equation/BoundaryConditions/XiInternalBoundaryCondition.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/ConstantParameter.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/DiffusionTerm.cpp"
-    "${PROJECT_SOURCE_DIR}/fvm/Equation/Operator.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Equation/Operator.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/EquationTerm.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/DiagonalTerm.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/DiagonalLinearTerm.cpp"
@@ -59,10 +59,11 @@ set(fvm_equation
     "${PROJECT_SOURCE_DIR}/fvm/Equation/LinearTransientTerm.cpp"
 )
 set(fvm_equation_headers
-    "${PROJECT_SOURCE_DIR}/include/FVM/Equation/Operator.hpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Equation/Operator.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Equation/EquationTerm.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Equation/AdvectionTerm.hpp"
-    "${PROJECT_SOURCE_DIR}/include/FVM/Equation/AdvectionDiffusionTerm.hpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Equation/AdvectionDiffusionTerm.hpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Equation/TermLog.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Equation/DiffusionTerm.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Equation/TransientTerm.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Equation/IdentityTerm.hpp"
@@ -117,7 +118,7 @@ set(fvm_grid_headers
 )
 
 add_library(fvm STATIC ${fvm_core} ${fvm_equation} ${fvm_grid} ${fvm_core_headers} ${fvm_equation_headers} ${fvm_grid_headers})
-target_include_directories(fvm PUBLIC "${PROJECT_BINARY_DIR}/include" "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include" "${PROJECT_SOURCE_DIR}/extern/softlib/include")
+target_include_directories(fvm PUBLIC "${PROJECT_BINARY_DIR}/include" "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include" "${PROJECT_SOURCE_DIR}/include" "${PROJECT_SOURCE_DIR}/extern/softlib/include")
 
 set_target_properties(fvm PROPERTIES
     # Require C++17

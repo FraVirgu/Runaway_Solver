@@ -9,6 +9,7 @@
 #include <vector>
 #include "DREAM/IO.hpp"
 #include "DREAM/Solver/Solver.hpp"
+#include "FVM/Equation/TermLog.hpp"
 #include "DREAM/UnknownQuantityEquation.hpp"
 #include "DREAM/EquationSystem.hpp"
 #include "FVM/BlockMatrix.hpp"
@@ -161,10 +162,40 @@ void Solver::BuildJacobian(const real_t, const real_t, FVM::BlockMatrix *jac)
  */
 void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real_t *S)
 {
+    // Optional log of how the matrix and the RHS are built, with timings:
+    //   -dream_log_matrix      log the first call
+    //   -dream_log_matrix N    log the first N calls
+    static PetscInt nLog = -1;
+    static PetscInt nCalls = 0;
+    if (nLog < 0)
+    {
+        PetscBool set = PETSC_FALSE;
+        PetscOptionsHasName(NULL, NULL, "-dream_log_matrix", &set);
+        nLog = 0;
+        if (set)
+        {
+            nLog = 1;
+            PetscOptionsGetInt(NULL, NULL, "-dream_log_matrix", &nLog, NULL);
+        }
+    }
+    nCalls++;
+    const bool log = (nCalls <= nLog);
+
+    typedef std::chrono::steady_clock clk;
+    auto ms = [](clk::time_point a, clk::time_point b)
+    { return std::chrono::duration<double, std::milli>(b - a).count(); };
+    clk::time_point tAll = clk::now(), t0 = tAll;
+
+    if (log)
+        printf("\n[matrix] call %d: %d x %d system, %d unknown(s) in the matrix\n",
+               (int)nCalls, (int)matrix_size, (int)matrix_size, (int)nontrivial_unknowns.size());
+
     // Reset matrix and rhs
     mat->Zero();
     for (len_t i = 0; i < matrix_size; i++)
         S[i] = 0;
+    if (log)
+        printf("[matrix]  reset matrix and RHS %56s %9.3f ms\n", "", ms(t0, clk::now()));
 
     // Build matrix
     for (len_t uqnId : nontrivial_unknowns)
@@ -172,8 +203,18 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
         UnknownQuantityEquation *eqn = unknown_equations->at(uqnId);
         map<len_t, len_t> &utmm = this->unknownToMatrixMapping;
         len_t matUqnId = utmm[uqnId]; // selecting row
+        if (log)
+            printf("[matrix]  equation for %s (rows %d..%d): %s\n",
+                   unknowns->GetUnknown(uqnId)->GetName().c_str(),
+                   (int)mat->GetOffset(matUqnId),
+                   (int)(mat->GetOffset(matUqnId) + unknowns->GetUnknown(uqnId)->NumberOfElements()) - 1,
+                   eqn->GetDescription().c_str());
+
         for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
         {
+            const char *colName = unknowns->GetUnknown(it->first)->GetName().c_str();
+            t0 = clk::now();
+
             if (utmm.find(it->first) != utmm.end())
             {
                 /*
@@ -182,7 +223,12 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
                 */
                 mat->SelectSubEquation(matUqnId, utmm[it->first]); //   utmm[it->first] selecting
                 PetscInt vecoffs = mat->GetOffset(matUqnId);
+                if (log)
+                    printf("[matrix]    block (%s, %s) -> MATRIX\n",
+                           unknowns->GetUnknown(uqnId)->GetName().c_str(), colName);
+                FVM::TermLog::matrix() = log;
                 it->second->SetMatrixElements(mat, S + vecoffs);
+                FVM::TermLog::matrix() = false;
 
                 // The unknown to which this operator should be applied is a
                 // "trivial" unknown quantity, meaning it does not appear in the
@@ -196,12 +242,29 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
             {
                 PetscInt vecoffs = mat->GetOffset(matUqnId);
                 const real_t *data = unknowns->GetUnknownData(it->first);
+                if (log)
+                    printf("[matrix]    block (%s, %s) -> RHS (%s is not in the matrix)\n",
+                           unknowns->GetUnknown(uqnId)->GetName().c_str(), colName, colName);
+                FVM::TermLog::matrix() = log;
                 it->second->SetVectorElements(S + vecoffs, data);
+                FVM::TermLog::matrix() = false;
             }
+            else if (log)
+                printf("[matrix]    block (%s, %s) -> DROPPED (kinetic-only: %s is not in the matrix)\n",
+                       unknowns->GetUnknown(uqnId)->GetName().c_str(), colName, colName);
+
+            if (log)
+                printf("[matrix]      block total %56s %9.3f ms\n", "", ms(t0, clk::now()));
         }
     }
 
+    t0 = clk::now();
     mat->Assemble();
+    if (log)
+    {
+        printf("[matrix]  final assembly %62s %9.3f ms\n", "", ms(t0, clk::now()));
+        printf("[matrix]  BuildMatrix total %59s %9.3f ms\n", "", ms(tAll, clk::now()));
+    }
 }
 
 /**
@@ -422,13 +485,19 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
 
         for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
         {
-            t0 = clk::now();
-            it->second->RebuildTerms(t, dt, unknowns);
             if (log)
-                printf("[rebuild]         operator on %-10s %s, ~%d nnz/row  %9.3f ms\n",
+                printf("[rebuild]         operator on %-10s %s, ~%d nnz/row\n",
                        unknowns->GetUnknown(it->first)->GetName().c_str(),
                        it->second->HasTransientTerm() ? "(transient)" : "           ",
-                       (int)it->second->GetNumberOfNonZerosPerRow(), ms(t0, clk::now()));
+                       (int)it->second->GetNumberOfNonZerosPerRow());
+
+            // The operator itself prints each of its terms, with timings
+            FVM::TermLog::rebuild() = log;
+            t0 = clk::now();
+            it->second->RebuildTerms(t, dt, unknowns);
+            FVM::TermLog::rebuild() = false;
+            if (log)
+                printf("[rebuild]           operator total %50s %9.3f ms\n", "", ms(t0, clk::now()));
         }
     }
 
