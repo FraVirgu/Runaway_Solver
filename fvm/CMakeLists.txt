@@ -1,11 +1,11 @@
 
 set(fvm_core
-    "${PROJECT_SOURCE_DIR}/fvm/BlockMatrix.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/BlockMatrix.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/DurationTimer.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Init.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Interpolator1D.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Interpolator3D.cpp"
-    "${PROJECT_SOURCE_DIR}/fvm/Matrix.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Matrix.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/MatrixInverter.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/NormEvaluator.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/UnknownQuantity.cpp"
@@ -23,7 +23,7 @@ set(fvm_core
 set(fvm_core_headers
     "${PROJECT_SOURCE_DIR}/include/FVM/BlockMatrix.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/FVMException.hpp"
-    "${PROJECT_SOURCE_DIR}/include/FVM/Matrix.hpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Matrix.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/MatrixInverter.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Solvers/MILU.hpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Solvers/MIILU.hpp"

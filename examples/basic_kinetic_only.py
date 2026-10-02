@@ -241,7 +241,7 @@ ds.radialgrid.setNr(Nr)
 # ---------------------------------------------------------------------
 ds.solver.setType(Solver.LINEAR_IMPLICIT)
 ds.solver.preconditioner.setEnabled(False)
-ds.solver.setLinearSolver(Solver.LINEAR_SOLVER_ILU)
+ds.solver.setLinearSolver(Solver.LINEAR_SOLVER_AMG)
 
 ds.other.include('fluid', 'nu_s', 'nu_D')
 

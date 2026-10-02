@@ -1,0 +1,378 @@
+===============================================================================
+ DREAM / Runaway_Solver: advection-diffusion rebuild and matrix assembly
+ Call chain, coefficient storage, and how coefficients enter the matrix
+===============================================================================
+
+
+-------------------------------------------------------------------------------
+PART 1. CALL CHAIN, TOP TO BOTTOM
+-------------------------------------------------------------------------------
+
+1. Time loop -> SolverLinearlyImplicit::Solve(t, dt)
+   File: SolverLinearlyImplicit.cpp:259
+
+   Each timestep calls, in order:
+
+     RebuildTerms(t, dt);             // line 279 -> produces the [rebuild] log
+     BuildMatrix(t, dt, matrix, S);   // line 286 -> produces the [matrix] log
+     inverter->Invert(...);           // line 323 -> ILU/AMG linear solve
+
+   Rebuild computes the coefficients. BuildMatrix copies them into the PETSc
+   matrix. The two log sections correspond to these two phases.
+
+
+2. Solver::RebuildTerms
+   File: Solver.cpp:371
+   Prints the numbered steps 1-8 seen in the log:
+
+     Steps 1-4  ionHandler->Rebuild(), cqh_hottail->Rebuild(),
+                cqh_runaway->Rebuild(), REFluid->Rebuild(t)
+     Step 5     loop over predetermined unknowns (n_cold, E_field, T_cold, ...)
+     Steps 6-7  SPI handler and bootstrap current (both "(none)" in this run)
+     Step 8     loop over non-trivial unknowns (f_hot, f_re, S_particle).
+                For each of their operators it calls
+                it->second->RebuildTerms(t, dt, unknowns)   (line 497)
+
+
+3. Operator::RebuildTerms
+   File: Operator.cpp:314
+   Processes the operator's parts in this order:
+
+     a) predetermined term
+     b) eval_terms
+     c) terms (includes TransientTerm and ParticleSourceTerm)
+     d) adterm->Rebuild(...)      advection-diffusion term   (line 356)
+     e) boundaryConditions                                   (line 366)
+
+
+4. AdvectionDiffusionTerm::Rebuild
+   File: AdvectionDiffusionTerm.cpp:114
+   This is where the log lines in question come from:
+
+     Line  Call                                          Log line
+     ----  --------------------------------------------  ---------------------------------
+     118   ResetCoefficients()                           reset coefficients
+     123   advectionterms[i]->Rebuild (each)             A_E (ElectricFieldTerm),
+                                                         A_C (SlowingDownTerm),
+                                                         A_s (SynchrotronTerm)
+     131   diffusionterms[i]->Rebuild (each)             D_xi,xi (PitchScatterTerm),
+                                                         D_pp (EnergyDiffusionTerm)
+     140   RebuildFluxLimiterDamping                     flux-limiter damping
+     144   AdvectionTerm::                               advection interpolation
+           RebuildInterpolationCoefficients              coefficients (upwind)
+
+   Each term's Rebuild ADDS its contribution into shared arrays:
+     advection: f1, f2, fr
+     diffusion: d11, d22, drr
+   That is why the matrix log later says "sum of: A_E; A_C; A_s". Since the sum
+   is complete by line 144, the interpolation weights are computed only once,
+   on the combined flux.
+
+
+5. AdvectionTerm::RebuildInterpolationCoefficients
+   File: DREAM/fvm/Equation/AdvectionTerm.cpp:343
+   Makes three calls, one per flux direction (r, p, xi):
+
+     deltar->SetCoefficient(fr, drr, ...);   // r-direction
+     delta1->SetCoefficient(f1, d11, ...);   // p-direction
+     delta2->SetCoefficient(f2, d22, ...);   // xi-direction
+
+
+6. AdvectionInterpolationCoefficient::SetCoefficient
+   File: DREAM/fvm/Equation/AdvectionInterpolationCoefficient.cpp:104
+   This is where the 11.9 ms is spent.
+
+   Loops: every radial cell ir, then i over n1 and j over n2
+          (32000 cells for f_hot = 500 x 64).
+
+   At each cell:
+     - checks A[ir][pind] > 0 to determine flow direction
+     - for AD_INTERP_UPWIND: sets alpha = 0.5 and calls
+       SetFirstOrderCoefficient(...)   (lines 174-177)
+
+   Cost = one pass over all cells for each flux grid, with a switch and a
+   stencil fill per cell. Measured: 11.9 ms for f_hot, 9.7 ms for f_re.
+
+
+-------------------------------------------------------------------------------
+PART 2. MATRIX PHASE (USES THESE COEFFICIENTS)
+-------------------------------------------------------------------------------
+
+  Solver::BuildMatrix                         (Solver.cpp:163)
+    -> it->second->SetMatrixElements(mat, S+vecoffs) per operator block (line 230)
+    -> Operator::SetMatrixElements            (Operator.cpp:475)
+    -> AdvectionDiffusionTerm::SetMatrixElements (AdvectionDiffusionTerm.cpp:157)
+         -> AdvectionTerm::SetMatrixElements   prints "advection inserted"
+         -> DiffusionTerm::SetMatrixElements   prints "diffusion inserted"
+
+  The advection part reads the delta weights computed in step 6 to write the
+  stencil.
+
+
+-------------------------------------------------------------------------------
+PART 3. WHERE THE FILES LIVE
+-------------------------------------------------------------------------------
+
+  - Runaway_Solver contains Operator.cpp, AdvectionDiffusionTerm.cpp and
+    everything under src/Solver/.
+  - AdvectionTerm.cpp and AdvectionInterpolationCoefficient.cpp exist ONLY in
+    the DREAM tree. Runaway_Solver has no copy of them.
+  - DREAM/fvm/CMakeLists.txt:39-49 compiles the DREAM versions of these two
+    files alongside Runaway_Solver's AdvectionDiffusionTerm.cpp and
+    Operator.cpp.
+
+  To change or instrument the upwind coefficient code (e.g. to speed up the
+  11.9 ms), the file to modify is AdvectionInterpolationCoefficient.cpp. Under
+  the rule of editing only Runaway_Solver, copy it into Runaway_Solver and
+  repoint the CMake entry.
+
+
+-------------------------------------------------------------------------------
+PART 4. WHAT COEFFICIENTS ARE STORED, AND ARE THEY VECTORS?
+-------------------------------------------------------------------------------
+
+Short answer: there are two groups of arrays, and the matrix is built from both
+together with grid geometry. Yes, they are vectors. Each is a pointer-to-pointer
+(real_t**) indexed [ir][flat_index], where every [ir] row points into a single
+contiguous block. In practice the data is a flat 1D array with one slice per
+radial cell.
+
+
+4.1 Flux coefficients (the physics)
+-----------------------------------
+Accumulated by ElectricFieldTerm, SlowingDownTerm, etc. in their Rebuild.
+Declared in AdvectionTerm.hpp:23-35 and DiffusionTerm.hpp.
+
+  Array          Meaning                         Size per ir    Index layout
+  -------------  ------------------------------  -------------  ----------------
+  fr             advection flux, radial          n1*n2          [j*np1 + i]
+                                                 (nr+1 faces)
+  f1             advection flux, p (momentum)    (n1+1)*n2      [j*(np1+1) + i]
+  f2             advection flux, xi (pitch)      n1*(n2+1)      [j*np1 + i]
+  f1pSqAtZero    p->0 singular limit of f1       n2             [j]
+  drr, d11, d22  diffusion coeffs (r, pp, xixi)  same as        same as
+                                                 fr, f1, f2     fr, f1, f2
+  d12, d21       diffusion cross terms           -              -
+
+Faces have one more entry than cells along their direction (N cells -> N+1
+faces). For this run: Nr = 1, np1 = 500, np2 = 64, so
+  f1 has 501 x 64 values
+  f2 has 500 x 65 values
+fr and drr are unused because there are no radial fluxes.
+
+
+4.2 Interpolation weights (the upwind step)
+-------------------------------------------
+Computed in step 6. Class: AdvectionInterpolationCoefficient (hpp:119).
+Storage: real_t ***deltas (three levels):
+
+  deltas[ir][pind][n]
+     pind = j*n1 + i                    (one face)
+     n    = 0 .. 2*STENCIL_WIDTH - 1    (4 slots, STENCIL_WIDTH = 2)
+
+For each face, deltas holds the weights that express the face value as a
+combination of neighbouring cell values:
+
+  f_face = SUM_n  delta[n] * f_cell[k_min + n]
+
+For first-order upwind (SetFirstOrderCoefficient, alpha = 0.5) only two of the
+four slots are set, on the upwind and downwind side of the face:
+
+  deltas[2+shiftU1] =  (b - 2*alpha*a)/(b - a)    -> 1  for alpha = 0.5
+  deltas[2+shiftD1] = -(1 - 2*alpha)*a/(b - a)    -> 0  for alpha = 0.5
+
+So in this run upwind reduces to "take the value of the cell the flow comes
+from". The sign of the flux (A > 0) picks the side.
+
+There are three such sets: deltar, delta1, delta2 (one per direction). The
+4-slot stencil exists so the same storage can hold QUICK, SMART and other
+higher-order schemes.
+
+
+4.3 How they combine in the matrix
+----------------------------------
+AdvectionTerm.set.cpp is #included inside AdvectionTerm::SetMatrixElements,
+with the macro f(K,I,J,V) defined as mat->SetElement.
+
+p-direction, cell (i, j):
+
+  S_i = F1(ir, i,   j, f1) * Vp_f1[j*(np1+1) + i  ] / (Vp[j*np1+i] * dp1[i]);  // inflow face
+  S_o = F1(ir, i+1, j, f1) * Vp_f1[j*(np1+1) + i+1] / (Vp[j*np1+i] * dp1[i]);  // outflow face
+
+  delta = delta1->GetCoefficient(ir, i, j, ...);
+  for (n, k = Kmin..Kmax)  X(k, j, -S_i * delta[n]);   // matrix entry, inflow
+
+  delta = delta1->GetCoefficient(ir, i+1, j, ...);
+  for (n, k = Kmin..Kmax)  X(k, j,  S_o * delta[n]);   // matrix entry, outflow
+
+Each matrix entry is:
+
+  +/- (flux * face area / cell volume) * delta[n]
+
+The xi-direction is identical using f2, delta2 and dp2.
+
+Geometry factors (from the grid):
+
+  Vp            cell volume factor
+  Vp_f1, Vp_f2  volume factor at the faces
+  dp1, dp2      cell widths
+
+DiffusionTerm.set.cpp works the same way with d11 and d22, but uses plain
+finite differences and does NOT use the delta weights.
+
+
+4.4 Data flow summary
+---------------------
+
+  Term::Rebuild      -->  f1, f2, d11, d22      (flux values at faces)
+                               |
+                               v
+  SetCoefficient     -->  delta1, delta2        (how to interpolate f to faces)
+                               |
+                               v
+  SetMatrixElements:  matrix entry = f * Vp_f / (Vp * dp) * delta[n]
+
+
+4.5 Can the 11.9 ms be skipped?
+-------------------------------
+In general, no: deltas depends on the sign of f1 and f2, which can change every
+step as E and p change, so it must be recomputed even on a fixed grid.
+
+However, in this kinetic-only setup E, T and n are prescribed, so the sign
+pattern of f1 and f2 is probably constant in time. If so, the upwind deltas
+never change after the first step and could be computed once.
+
+NOT VERIFIED: check that A_E does not flip sign anywhere before relying on this.
+
+
+-------------------------------------------------------------------------------
+PART 5. MEMORY LAYOUT OF THE INTERPOLATION WEIGHTS (deltas)
+-------------------------------------------------------------------------------
+
+5.1 The structure
+-----------------
+There are 3 AdvectionInterpolationCoefficient objects: deltar, delta1, delta2.
+Each has its own real_t ***deltas, a 3-level array:
+
+  deltas[ir][pind][n]
+     |    |     +-- n    : 0..3, the 4 weights of one face
+     |    +-------- pind : which face in the momentum grid, j*n1 + i
+     +------------- ir   : which radial cell
+
+For delta1 (p-direction) in this run:
+
+  Level              Type        Size                  Meaning
+  -----------------  ----------  --------------------  -----------------------
+  deltas             real_t***   nr = 1                one entry per radius
+  deltas[ir]         real_t**    n1n2 = 501 x 64 faces one entry per face
+  deltas[ir][pind]   real_t*     4                     the weights of that face
+
+
+5.2 The three allocations
+-------------------------
+The three `new` lines in GridRebuilt create one array per level:
+
+  deltas       = new real_t**[nr];          // level 1: nr pointers
+  deltas[0]    = new real_t*[nr*n1n2];      // level 2: one pointer per face
+  deltas[0][0] = new real_t[nr*n1n2*4];     // level 3: the actual numbers
+
+  - Only the third line holds weights.
+  - The first two are pointer tables that make the [ir][pind][n] syntax work.
+  - The loops after them fill the pointer tables by pointing each entry into
+    the block below it.
+
+Picture:
+
+  deltas --> [ptr_ir0]                           level 1 (nr entries)
+                 |
+                 v
+             [ptr_f0][ptr_f1][ptr_f2] ...        level 2 (n1n2 entries)
+                 |       |       |
+                 v       v       v
+             [w0 w1 w2 w3][w0 w1 w2 w3][...]     level 3 (4 doubles per face,
+                                                          contiguous)
+
+So new real_t[nr*n1n2*4] is NOT "the whole grid per point". It is the level-3
+storage for all faces together: 4 numbers per face, laid end to end. Each
+face's deltas[ir][pind] points at its own 4-slot slice.
+
+
+5.3 Cells vs faces
+------------------
+Cells hold the unknown f. Faces are the boundaries between cells, where fluxes
+are evaluated. A row of N cells has N+1 faces, since both ends need one.
+
+1D picture (p direction, n1 = 4 cells):
+
+  face:   0     1     2     3     4
+          |  c0 |  c1 |  c2 |  c3 |
+          p=0                    p=pmax
+
+  - 4 cells, i = 0..3
+  - 5 faces, i = 0..4 (the first and last are boundaries)
+
+Each cell has an inflow face i and an outflow face i+1, which is why the matrix
+code reads F1(ir,i,j) and F1(ir,i+1,j). The weights delta1[face] say how to
+build f at that face from the neighbouring cells.
+
+
+5.4 Why the face counts differ per direction
+--------------------------------------------
+The momentum grid is 2D: n1 cells in p by n2 cells in xi. Each direction has
+its own set of faces.
+
+                p ->   (index i, n1 = 4 cells)
+          +----+----+----+----+
+   xi ^   | c  | c  | c  | c  |  j = 2
+  (n2=3)  +----+----+----+----+      ---- xi-faces (horizontal lines)
+          | c  | c  | c  | c  |  j = 1
+          +----+----+----+----+
+          | c  | c  | c  | c  |  j = 0
+          +----+----+----+----+
+          |    |    |    |    |
+          p-faces (vertical lines)
+
+  - p-faces (delta1): the vertical lines. n1+1 per row, n2 rows
+      -> (n1+1)*n2 faces. Carries flux f1 (momentum direction).
+  - xi-faces (delta2): the horizontal lines. n2+1 per column, n1 columns
+      -> n1*(n2+1) faces. Carries flux f2 (pitch direction).
+  - radial faces (deltar): between radial cells. nr+1 of them, each with the
+      full n1*n2 momentum grid -> (nr+1)*n1*n2 faces.
+
+For this grid (Np = 500, Nxi = 64, Nr = 1):
+
+  Object   Faces
+  -------  ---------------------------
+  delta1   501 x 64      = 32,064
+  delta2   500 x 65      = 32,500
+  deltar   2 x 500 x 64  = 64,000
+
+These counts come from GridRebuilt, which adds +1 to n1 for P1, +1 to n2 for
+P2, and +1 to nr for radial (AdvectionInterpolationCoefficient.cpp:48-52).
+
+
+5.5 Correction: deltar is computed even though it is never used
+---------------------------------------------------------------
+Earlier it was stated that deltar is unused in this run. That is too strong.
+
+  - With Nr = 1 there is no radial transport, so fr is all zeros and the
+    matrix code skips the radial flux:
+        if (Fr(ir,...) || Fr(ir+1,...))   -> false
+  - BUT RebuildInterpolationCoefficients still calls
+        deltar->SetCoefficient(...)       (AdvectionTerm.cpp:347)
+    and its loop covers all 64,000 radial faces, about twice as many as
+    delta1.
+
+So the radial weights are computed every step and then never read.
+
+NOT MEASURED: this is a reading of the code. If it holds, a large part of the
+11.9 ms for f_hot is spent on radial weights that have no effect on the
+result. It has not been checked whether SetCoefficient returns early for a
+degenerate radial grid.
+
+How to verify: put a timer around each of the three SetCoefficient calls at
+AdvectionTerm.cpp:347-349 and compare. Under the rule of editing only
+Runaway_Solver, AdvectionTerm.cpp must first be copied into Runaway_Solver
+and the CMake entry repointed.
+
+===============================================================================

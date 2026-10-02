@@ -34,8 +34,10 @@ DiagonalPreconditioner::DiagonalPreconditioner(
 
     const len_t N = unknowns->GetLongVectorSize(nontrivials);
 
-    VecCreateSeq(PETSC_COMM_WORLD, N, &this->iuqn);
-    VecCreateSeq(PETSC_COMM_WORLD, N, &this->eqn);
+    // Work vectors that every rank holds in full, so they live on
+    // PETSC_COMM_SELF (a VECSEQ cannot be created on a larger communicator).
+    VecCreateSeq(PETSC_COMM_SELF, N, &this->iuqn);
+    VecCreateSeq(PETSC_COMM_SELF, N, &this->eqn);
 
     this->SetDefaultScalings();
 }

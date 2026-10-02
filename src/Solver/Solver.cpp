@@ -399,10 +399,10 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
     solver_timeKeeper->StartTimer(timerTot);
 
     clk::time_point t0 = clk::now();
-    this->ionHandler->Rebuild();
+    // this->ionHandler->Rebuild();
     // Rebuild ionHandler, collision handlers and RunawayFluid
     if (log)
-        printf("[rebuild]  1. IonHandler                       %9.3f ms\n", ms(t0, clk::now()));
+        printf("[rebuild]  1. SKIP IonHandler                       %9.3f ms\n", ms(t0, clk::now()));
 
     solver_timeKeeper->StartTimer(timerCqh);
     t0 = clk::now();

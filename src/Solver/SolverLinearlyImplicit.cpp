@@ -124,6 +124,10 @@ void SolverLinearlyImplicit::initialize_internal(
     // replaying the dumped matrices through a separate (e.g. parallel)
     // solver process, which has no EquationSystem of its own to recompute
     // these from.
+    // (Written by one rank only, as every rank runs this code.)
+    PetscMPIInt mpiRank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &mpiRank);
+    if (mpiRank == 0)
     {
         std::ofstream blockSizesFile("petsc_block_sizes.txt");
         blockSizesFile << "Nhot " << this->Nhot << "\n";
@@ -133,7 +137,8 @@ void SolverLinearlyImplicit::initialize_internal(
 
     this->SelectLinearSolver(size);
 
-    VecCreateSeq(PETSC_COMM_WORLD, size, &this->petsc_S);
+    // Same row layout as the matrix (distributed over PETSC_COMM_WORLD)
+    MatCreateVecs(this->matrix->mat(), &this->petsc_S, NULL);
 }
 /**
  * Initialize the solver with a system that contains only the kinetic
@@ -213,6 +218,10 @@ void SolverLinearlyImplicit::initialize_kinetic_only(
     this->matrix_size = sizeKinetic;
 
     // Same file as in initialize_internal(), here with Ntot = Nhot+Nre.
+    // (Written by one rank only, as every rank runs this code.)
+    PetscMPIInt mpiRank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &mpiRank);
+    if (mpiRank == 0)
     {
         std::ofstream blockSizesFile("petsc_block_sizes.txt");
         blockSizesFile << "Nhot " << this->Nhot << "\n";
@@ -226,7 +235,8 @@ void SolverLinearlyImplicit::initialize_kinetic_only(
 
     this->SelectLinearSolver(sizeKinetic);
 
-    VecCreateSeq(PETSC_COMM_WORLD, sizeKinetic, &this->petsc_S);
+    // Same row layout as the matrix (distributed over PETSC_COMM_WORLD)
+    MatCreateVecs(this->matrix->mat(), &this->petsc_S, NULL);
 }
 
 /**

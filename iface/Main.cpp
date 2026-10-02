@@ -183,19 +183,8 @@ int main(int argc, char *argv[])
 {
     int exit_code = 0;
     MPI_Init(&argc, &argv);
-    int my_rank, size, my_sub_rank, sub_size;
-    int color;
-    MPI_Request ib_rq;
-    MPI_Comm sub_comm, inter_comm;
+    int my_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &my_rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-    if (my_rank == 0)
-        color = 0;
-    else
-        color = 1;
-    MPI_Comm_split(MPI_COMM_WORLD, color, 0, &sub_comm);
-    MPI_Comm_size(sub_comm, &sub_size);
-    MPI_Comm_rank(sub_comm, &my_sub_rank);
 
     DREAM::Simulation *sim = nullptr;
 
@@ -206,10 +195,10 @@ int main(int argc, char *argv[])
     char ***argv2 = construct_fake_args(args, argc2);
     dream_initialize(&argc2, argv2);*/
 
-    // Initialize the DREAM library
-    if (size == 1)
+    // Initialize the DREAM library. Every rank runs the whole simulation
+    // on PETSC_COMM_WORLD (= MPI_COMM_WORLD); the equation-system matrix
+    // is distributed across the ranks (see Matrix::Construct()).
     {
-        PETSC_COMM_WORLD = sub_comm;
         dream_initialize();
         // Allow the user to press Ctrl+\ or Ctrl+Y to quit the simulation early
         PetscPopSignalHandler();
@@ -241,18 +230,17 @@ int main(int argc, char *argv[])
         try
         {
 
-            cout << "sadsad" << endl;
             DREAM::Settings *settings = DREAM::SimulationGenerator::CreateSettings();
-            cout << "asdsad" << endl;
             DREAM::SettingsSFile::LoadSettings(settings, a->input_filename);
-            cout << "asdqw" << endl;
             sim = DREAM::SimulationGenerator::ProcessSettings(settings);
 
             if (a->print_adas)
                 display_adas(sim);
 
             sim->Run();
-            sim->Save();
+            // Only one rank writes the output file
+            if (my_rank == 0)
+                sim->Save();
         }
         catch (DREAM::QuitException &ex)
         {
@@ -279,5 +267,6 @@ int main(int argc, char *argv[])
         delete sim;
     }
 
+    MPI_Finalize();
     return 0;
 }

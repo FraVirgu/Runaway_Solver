@@ -176,10 +176,9 @@ void EquationSystem::ProcessSystem(const real_t t0)
     this->extiter = new ExternalIterator(
         &this->unknowns, &this->unknown_equations);
     this->extiter->Initialize(this->external_unknowns);
-    std::cout << "Inside EquationSystem,Process_System before Execute" << std::endl;
+    std::cout << "Inside EquationSystem,Process_System SKIP initializer->Execute(t0); => all the unknown to be computed are passed by input" << std::endl;
     // Set initial values
     this->initializer->Execute(t0);
-    std::cout << "Inside EquationSystem,Process_System after Execute" << std::endl;
 
     if (unknownMissing)
         throw EquationSystemException("While processing equation system: Equations not declared for some unknowns.");
@@ -287,7 +286,6 @@ void EquationSystem::Solve()
     delete[] guess;
 
     cout << "Beginning time advance..." << endl;
-
     Timer tim;
     len_t istep = 0; // Number of times 'solver->Solve()' has been called...
     while (!timestepper->IsFinished())

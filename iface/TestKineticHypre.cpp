@@ -309,7 +309,7 @@ int main(int argc, char *argv[])
         }
     }
     const PetscInt Nk = Nhot + Nre;
-    if (Nk <= 0 || Nk >= N)
+    if (Nk <= 0 || Nk > N)
     {
         if (my_rank == 0)
             cerr << "Invalid block sizes: Nhot+Nre = " << Nk << ", N = " << N << endl;
@@ -332,20 +332,30 @@ int main(int argc, char *argv[])
     ISCreateStride(PETSC_COMM_WORLD, nk, nk > 0 ? klo : 0, 1, &isK);
     ISCreateStride(PETSC_COMM_WORLD, nf, nf > 0 ? flo : 0, 1, &isF);
 
-    Mat Akk, Akf;
+    // Nk == N: kinetic-only system, no fluid block / coupling
+    const bool haveFluid = (Nk < N);
+
+    Mat Akk, Akf = nullptr;
     MatCreateSubMatrix(A, isK, isK, MAT_INITIAL_MATRIX, &Akk);
-    MatCreateSubMatrix(A, isK, isF, MAT_INITIAL_MATRIX, &Akf);
+    if (haveFluid)
+        MatCreateSubMatrix(A, isK, isF, MAT_INITIAL_MATRIX, &Akf);
 
     Vec bk, xf, xk_ref;
     VecGetSubVector(b, isK, &bk);
-    VecGetSubVector(xref, isF, &xf);
+    if (haveFluid)
+        VecGetSubVector(xref, isF, &xf);
     VecGetSubVector(xref, isK, &xk_ref);
 
     // rhs = b_k - A_kf x_f
     Vec rhs, x;
     MatCreateVecs(Akk, &x, &rhs);
-    MatMult(Akf, xf, rhs);
-    VecAYPX(rhs, -1.0, bk);
+    if (haveFluid)
+    {
+        MatMult(Akf, xf, rhs);
+        VecAYPX(rhs, -1.0, bk);
+    }
+    else
+        VecCopy(bk, rhs);
     VecSet(x, 0.0);
 
     if (my_rank == 0)
@@ -402,12 +412,14 @@ int main(int argc, char *argv[])
     }
 
     VecRestoreSubVector(b, isK, &bk);
-    VecRestoreSubVector(xref, isF, &xf);
+    if (haveFluid)
+        VecRestoreSubVector(xref, isF, &xf);
     VecRestoreSubVector(xref, isK, &xk_ref);
     VecDestroy(&x);
     VecDestroy(&rhs);
     MatDestroy(&Akk);
-    MatDestroy(&Akf);
+    if (haveFluid)
+        MatDestroy(&Akf);
     ISDestroy(&isK);
     ISDestroy(&isF);
     MatDestroy(&A);
