@@ -63,6 +63,8 @@ namespace DREAM
         // Whether or not to provide verbose output
         bool verbose = false;
 
+        bool first_build_constant_term = false;
+
         // Maximum number of iterations allowed for the external iterator
         len_t extiter_maxiter = 20;
 

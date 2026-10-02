@@ -405,25 +405,36 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
         printf("[rebuild]  1. SKIP IonHandler                       %9.3f ms\n", ms(t0, clk::now()));
 
     solver_timeKeeper->StartTimer(timerCqh);
-    t0 = clk::now();
-    if (this->cqh_hottail != nullptr)
-        this->cqh_hottail->Rebuild();
-    if (log)
-        printf("[rebuild]  2. collision handler, hot-tail     %s%9.3f ms\n",
-               this->cqh_hottail != nullptr ? "" : "(none) ", ms(t0, clk::now()));
-    t0 = clk::now();
-    if (this->cqh_runaway != nullptr)
-        this->cqh_runaway->Rebuild();
-    if (log)
-        printf("[rebuild]  3. collision handler, runaway      %s%9.3f ms\n",
-               this->cqh_runaway != nullptr ? "" : "(none) ", ms(t0, clk::now()));
-    solver_timeKeeper->StopTimer(timerCqh);
+    if (!this->first_build_constant_term)
+    {
+        t0 = clk::now();
+        if (this->cqh_hottail != nullptr)
+            this->cqh_hottail->Rebuild();
+        if (log)
+            printf("[rebuild]  2. collision handler, hot-tail     %s%9.3f ms\n",
+                   this->cqh_hottail != nullptr ? "" : "(none) ", ms(t0, clk::now()));
+        t0 = clk::now();
+        if (this->cqh_runaway != nullptr)
+            this->cqh_runaway->Rebuild();
+        if (log)
+            printf("[rebuild]  3. collision handler, runaway      %s%9.3f ms\n",
+                   this->cqh_runaway != nullptr ? "" : "(none) ", ms(t0, clk::now()));
+        solver_timeKeeper->StopTimer(timerCqh);
+        this->first_build_constant_term = true;
+    }
+    else
+    {
+        if (log)
+        {
+            printf("[rebuild]  3.  SKIP collision handler\n");
+        }
+    }
 
     solver_timeKeeper->StartTimer(timerREFluid);
     t0 = clk::now();
-    this->REFluid->Rebuild(t);
+    // this->REFluid->Rebuild(t);
     if (log)
-        printf("[rebuild]  4. RunawayFluid                     %9.3f ms\n", ms(t0, clk::now()));
+        printf("[rebuild]  4. SKIP RunawayFluid                     %9.3f ms\n", ms(t0, clk::now()));
     solver_timeKeeper->StopTimer(timerREFluid);
 
     solver_timeKeeper->StartTimer(timerRebuildTerms);
