@@ -47,7 +47,7 @@ namespace DREAM {
 
         real_t CurrentTime() const { return this->t; }
         real_t CurrentTimeStep() const { return this->dt; }
-        FVM::BlockMatrix *GetMatrix() { return this->matrix; }
+        FVM::BlockMatrix *GetMatrix() override { return this->matrix; }
 
         virtual void SetInitialGuess(const real_t*) override;
         virtual void Solve(const real_t, const real_t) override;

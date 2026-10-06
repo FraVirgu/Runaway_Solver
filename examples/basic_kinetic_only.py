@@ -125,8 +125,8 @@ E = E_NORM * E_c
 # anisotropic ... increasingly aggravated for higher electron energies"
 # (Sec. 1) and an under-resolved pitch direction would flatter the
 # iteration counts.
-Np   = 500
-Nxi  = 64
+Np   = 1500
+Nxi  = 1000
 Nr   = 1
 
 # Time, in units of tau_c. The paper runs to T_final = 1 for its physics

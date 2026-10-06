@@ -502,6 +502,17 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
                        it->second->HasTransientTerm() ? "(transient)" : "           ",
                        (int)it->second->GetNumberOfNonZerosPerRow());
 
+            // Tell its transient terms which part of the unknown is ours
+            FVM::BlockMatrix *bm = this->GetMatrix();
+            if (bm != nullptr && unknownToMatrixMapping.count(it->first))
+            {
+                PetscInt rstart, nloc;
+                bm->GetOwnershipRange(&rstart, &nloc);
+                it->second->SetLocalRange(
+                    rstart, rstart + nloc,
+                    bm->GetOffset(unknownToMatrixMapping[it->first]));
+            }
+
             // The operator itself prints each of its terms, with timings
             FVM::TermLog::rebuild() = log;
             t0 = clk::now();

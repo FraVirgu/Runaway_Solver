@@ -130,6 +130,9 @@ namespace DREAM
         void BuildVector(const real_t, const real_t, real_t *, FVM::BlockMatrix *);
         void RebuildTerms(const real_t, const real_t);
 
+        // The equation-system matrix (nullptr if the solver has none)
+        virtual FVM::BlockMatrix *GetMatrix() { return nullptr; }
+
         void CalculateNonTrivial2Norm(const real_t *, real_t *);
 
         ConvergenceChecker *GetConvergenceChecker() { return convChecker; }

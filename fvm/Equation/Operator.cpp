@@ -129,7 +129,22 @@ void Operator::AddTerm(TransientTerm *t)
 {
     this->hasTransientTerm = true;
     terms.push_back(t);
+    transientTerms.push_back(t);
     CheckConsistency();
+}
+
+/**
+ * Tell the transient terms of this operator which matrix rows are owned
+ * by this rank, and where the unknown they act on starts in the matrix.
+ *
+ * rstart: First matrix row owned by this rank.
+ * rend:   One past the last matrix row owned by this rank.
+ * offset: First matrix row of the unknown this operator acts on.
+ */
+void Operator::SetLocalRange(const PetscInt rstart, const PetscInt rend, const PetscInt offset)
+{
+    for (auto t : transientTerms)
+        t->SetLocalRange(rstart, rend, offset);
 }
 
 /**

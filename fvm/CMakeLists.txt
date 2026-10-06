@@ -8,7 +8,7 @@ set(fvm_core
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Matrix.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/MatrixInverter.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/NormEvaluator.cpp"
-    "${PROJECT_SOURCE_DIR}/fvm/UnknownQuantity.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/UnknownQuantity.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/UnknownQuantityHandler.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/QuantityData.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Solvers/MILU.cpp"
@@ -56,7 +56,7 @@ set(fvm_equation
     "${PROJECT_SOURCE_DIR}/fvm/Equation/MomentQuantity.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/PredeterminedParameter.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/PrescribedParameter.cpp"
-    "${PROJECT_SOURCE_DIR}/fvm/Equation/LinearTransientTerm.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Equation/LinearTransientTerm.cpp"
 )
 set(fvm_equation_headers
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Equation/Operator.hpp"

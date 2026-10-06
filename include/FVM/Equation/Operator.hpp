@@ -26,6 +26,9 @@ namespace DREAM::FVM {
         std::vector<BC::BoundaryCondition*> boundaryConditions;
         std::vector<EquationTerm*> terms;
         std::vector<EvaluableEquationTerm*> eval_terms;
+        // The transient terms (also in the list of terms), which need to know
+        // which part of the unknown belongs to this rank
+        std::vector<LinearTransientTerm*> transientTerms;
         PredeterminedParameter *predetermined = nullptr;
         AdvectionDiffusionTerm *adterm = nullptr;
         Grid *grid;
@@ -59,6 +62,10 @@ namespace DREAM::FVM {
 
         void Evaluate(real_t*, const real_t*);
         void EvaluableTransform(real_t*);
+
+        // Tell the transient terms which matrix rows this rank owns (see
+        // LinearTransientTerm::SetLocalRange())
+        void SetLocalRange(const PetscInt, const PetscInt, const PetscInt);
 
 		bool HasTransientTerm() const { return this->hasTransientTerm; }
 
