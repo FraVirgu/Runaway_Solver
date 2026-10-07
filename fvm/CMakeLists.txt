@@ -65,9 +65,9 @@ set(fvm_equation_headers
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Equation/AdvectionDiffusionTerm.hpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Equation/TermLog.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Equation/DiffusionTerm.hpp"
-    "${PROJECT_SOURCE_DIR}/include/FVM/Equation/TransientTerm.hpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Equation/TransientTerm.hpp"
     "${PROJECT_SOURCE_DIR}/include/FVM/Equation/IdentityTerm.hpp"
-    "${PROJECT_SOURCE_DIR}/include/FVM/Equation/TransientTerm.hpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/include/FVM/Equation/TransientTerm.hpp"
 )
 set(fvm_grid
     "${PROJECT_SOURCE_DIR}/fvm/Grid/AnalyticBRadialGridGenerator.cpp"

@@ -127,8 +127,10 @@ namespace DREAM
 
         void BuildJacobian(const real_t, const real_t, FVM::BlockMatrix *);
         void BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *, real_t *);
+        void BuildMatrixTransientTerm(const real_t, const real_t, FVM::BlockMatrix *, real_t *);
         void BuildVector(const real_t, const real_t, real_t *, FVM::BlockMatrix *);
         void RebuildTerms(const real_t, const real_t);
+        void RebuildTermsTransientTerm(const real_t, const real_t);
 
         // The equation-system matrix (nullptr if the solver has none)
         virtual FVM::BlockMatrix *GetMatrix() { return nullptr; }

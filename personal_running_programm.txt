@@ -36,3 +36,7 @@ env LD_LIBRARY_PATH="/home/francesco-virgulti/Desktop/Masked_ROM/hazmath/lib:/us
  OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 PETSC_OPTIONS="-scale diag" mpirun -n 1 --bind-to core --map-by core ./testkinetichypreparallel
 
 PETSC_OPTIONS=" -dream_kinetic_only -dream_log_rebuild 3  -dream_log_matrix -dream_scale "diag" " ./dreami ./dream_settings_paper.h5 
+
+
+
+ unset LD_LIBRARY_PATH

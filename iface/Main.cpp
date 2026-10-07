@@ -263,8 +263,10 @@ int main(int argc, char *argv[])
             exit_code = 3;
         }
 
-        dream_finalize();
+        // The simulation owns PETSc objects (matrix, solver), which must be
+        // destroyed before PETSc is finalized
         delete sim;
+        dream_finalize();
     }
 
     MPI_Finalize();

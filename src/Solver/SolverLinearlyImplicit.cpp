@@ -286,76 +286,95 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
             unknowns->RestoreSolution(this->nontrivial_unknowns);
 
         this->timeKeeper->StartTimer(timerRebuild);
-        RebuildTerms(t, dt);
+        RebuildTermsTransientTerm(t, dt);
         this->timeKeeper->StopTimer(timerRebuild);
 
         real_t *S;
         VecGetArray(petsc_S, &S);
 
         this->timeKeeper->StartTimer(timerMatrix);
-        BuildMatrix(t, dt, matrix, S);
+        BuildMatrixTransientTerm(t, dt, matrix, S);
         this->timeKeeper->StopTimer(timerMatrix);
 
+        // The file name carries the number of MPI ranks of this run
+        PetscMPIInt nRanks;
+        MPI_Comm_size(PETSC_COMM_WORLD, &nRanks);
         matrix->View(
             FVM::Matrix::BINARY_MATLAB,
-            "petsc_mat_serial_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter));
+            "petsc_mat_np" + std::to_string(nRanks) + "_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter));
 
-        // Negate vector
-        // We do this since in DREAM, we write the equation as
-        //
-        //   Mx + S = 0
-        //
-        // whereas PETSc solves the equation
-        //
-        //   Ax = b
-        //
-        // Thus, b = -S
-        for (len_t i = 0; i < matrix->GetNRows(); i++)
+        /*
+           Negate vector
+           We do this since in DREAM, we write the equation as
+
+           Mx + S = 0
+
+           whereas PETSc solves the equation
+
+           Ax = b
+
+           Thus, b = -S
+
+       */
+
+        // ('S' only holds the rows owned by this rank)
+        PetscInt nLocalRows;
+        VecGetLocalSize(petsc_S, &nLocalRows);
+        for (PetscInt i = 0; i < nLocalRows; i++)
             S[i] = -S[i];
 
         this->SaveDebugInfo(this->nTimeStep, matrix, S);
 
         VecRestoreArray(petsc_S, &S);
 
+        // Saved under the same name as the matrix above
         {
             PetscViewer rhsViewer;
-            std::string rhsname = "petsc_rhs_serial_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter);
+            std::string rhsname = "petsc_rhs_np" + std::to_string(nRanks) + "_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter);
             PetscViewerBinaryOpen(PETSC_COMM_WORLD, rhsname.c_str(), FILE_MODE_WRITE, &rhsViewer);
             VecView(petsc_S, rhsViewer);
             PetscViewerDestroy(&rhsViewer);
         }
 
-        // Scale the matrix and RHS (if -dream_scale is set)
-        this->Scale(matrix, petsc_S);
+        // // Scale the matrix and RHS (if -dream_scale is set)
+        // this->Scale(matrix, petsc_S);
 
-        auto start = std::chrono::steady_clock::now();
-        this->timeKeeper->StartTimer(timerInvert);
-        inverter->Invert(matrix, &petsc_S, &petsc_S);
-        this->timeKeeper->StopTimer(timerInvert);
+        // auto start = std::chrono::steady_clock::now();
+        // this->timeKeeper->StartTimer(timerInvert);
+        // inverter->Invert(matrix, &petsc_S, &petsc_S);
+        // this->timeKeeper->StopTimer(timerInvert);
 
-        if (this->nTimeStep == 1)
-        {
-            auto end = std::chrono::steady_clock::now();
-            cout << "iter_0:time " << std::chrono::duration<double>(end - start).count() << " s" << endl;
-        }
+        // if (this->nTimeStep == 1)
+        // {
+        //     auto end = std::chrono::steady_clock::now();
+        //     cout << "iter_0:time " << std::chrono::duration<double>(end - start).count() << " s" << endl;
+        // }
 
-        // Undo the scaling on the solution
-        this->Unscale(petsc_S);
+        // // Undo the scaling on the solution
+        // this->Unscale(petsc_S);
 
-        // Store solution
-        unknowns->Store(this->nontrivial_unknowns, petsc_S);
+        // // Store solution
+        // unknowns->Store(this->nontrivial_unknowns, petsc_S);
 
-        // Call external iterator (if enabled)
-        if (this->extiter != nullptr)
-            extiter_conv = this->extiter->Solve(t, dt, this->nTimeStep);
+        // // Call external iterator (if enabled)
+        // if (this->extiter != nullptr)
+        //     extiter_conv = this->extiter->Solve(t, dt, this->nTimeStep);
+
+        extiter_conv = true;
     } while (!extiter_conv);
 
+    // petsc_S now holds the (unscaled) solution of this time step. It is
+    // saved twice: under the name of the matrix and RHS saved above, so that
+    // the three can be loaded together, and as 'petsc_solution_final_step',
+    // which is overwritten on every time step.
+    for (const std::string &solname :
+         {"petsc_solution_serial_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter),
+          std::string("petsc_solution_final_step")})
     {
-        PetscViewer rhsViewer;
-        std::string rhsname = "petsc_solution_final_step";
-        PetscViewerBinaryOpen(PETSC_COMM_WORLD, rhsname.c_str(), FILE_MODE_WRITE, &rhsViewer);
-        VecView(petsc_S, rhsViewer);
-        PetscViewerDestroy(&rhsViewer);
+        PetscViewer solViewer;
+        PetscViewerBinaryOpen(PETSC_COMM_WORLD, solname.c_str(), FILE_MODE_WRITE, &solViewer);
+        VecView(petsc_S, solViewer);
+        PetscViewerDestroy(&solViewer);
     }
 
     if (this->extiter)

@@ -268,6 +268,132 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
 }
 
 /**
+ * Build a linear operator matrix for the equation system.
+ *
+ * t:    Time to build the jacobian matrix for.
+ * dt:   Length of time step to take.
+ * mat:  Matrix to use for storing the jacobian.
+ * rhs:  Right-hand-side in equation.
+ */
+void Solver::BuildMatrixTransientTerm(const real_t, const real_t, FVM::BlockMatrix *mat, real_t *S)
+{
+    // Optional log of how the matrix and the RHS are built, with timings:
+    //   -dream_log_matrix      log the first call
+    //   -dream_log_matrix N    log the first N calls
+    static PetscInt nLog = -1;
+    static PetscInt nCalls = 0;
+    if (nLog < 0)
+    {
+        PetscBool set = PETSC_FALSE;
+        PetscOptionsHasName(NULL, NULL, "-dream_log_matrix", &set);
+        nLog = 0;
+        if (set)
+        {
+            nLog = 1;
+            PetscOptionsGetInt(NULL, NULL, "-dream_log_matrix", &nLog, NULL);
+        }
+    }
+    nCalls++;
+    const bool log = (nCalls <= nLog);
+
+    typedef std::chrono::steady_clock clk;
+    auto ms = [](clk::time_point a, clk::time_point b)
+    { return std::chrono::duration<double, std::milli>(b - a).count(); };
+    clk::time_point tAll = clk::now(), t0 = tAll;
+
+    if (log)
+        printf("\n[matrix] call %d: %d x %d system, %d unknown(s) in the matrix\n",
+               (int)nCalls, (int)matrix_size, (int)matrix_size, (int)nontrivial_unknowns.size());
+
+    // Reset matrix and rhs
+    // 'S' is the array of a distributed vector: it only holds the rows
+    // [rstart, rstart+nloc) owned by this rank, row 'r' being S[r-rstart]
+    PetscInt rstart, nloc;
+    mat->GetOwnershipRange(&rstart, &nloc);
+
+    mat->Zero();
+    for (PetscInt i = 0; i < nloc; i++)
+        S[i] = 0;
+    if (log)
+        printf("[matrix]  reset matrix and RHS %56s %9.3f ms\n", "", ms(t0, clk::now()));
+
+    // Build matrix
+    for (len_t uqnId : nontrivial_unknowns)
+    {
+        UnknownQuantityEquation *eqn = unknown_equations->at(uqnId);
+        map<len_t, len_t> &utmm = this->unknownToMatrixMapping;
+        len_t matUqnId = utmm[uqnId]; // selecting row
+        if (log)
+            printf("[matrix]  equation for %s (rows %d..%d): %s\n",
+                   unknowns->GetUnknown(uqnId)->GetName().c_str(),
+                   (int)mat->GetOffset(matUqnId),
+                   (int)(mat->GetOffset(matUqnId) + unknowns->GetUnknown(uqnId)->NumberOfElements()) - 1,
+                   eqn->GetDescription().c_str());
+
+        for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
+        {
+            // Only the transient terms are inserted here
+            if (!it->second->HasTransientTerm())
+                continue;
+
+            const char *colName = unknowns->GetUnknown(it->first)->GetName().c_str();
+            t0 = clk::now();
+
+            if (utmm.find(it->first) != utmm.end())
+            {
+                /*
+                SelectSubEquation(2, 0)   →  rowOffset=6000, colOffset=0   (no matrix change)
+                SetElement(5, 7, 1.3)     →  MatSetValue(mat, 6005, 7, 1.3)  (matrix changes here)
+                */
+                mat->SelectSubEquation(matUqnId, utmm[it->first]); //   utmm[it->first] selecting
+                // (element 'i' of the unknown is row vecoffs+i, and the
+                // transient terms only touch the rows of this rank)
+                PetscInt vecoffs = mat->GetOffset(matUqnId) - rstart;
+                if (log)
+                    printf("[matrix]    block (%s, %s) -> MATRIX (transient terms only)\n",
+                           unknowns->GetUnknown(uqnId)->GetName().c_str(), colName);
+                FVM::TermLog::matrix() = log;
+                it->second->SetMatrixElementsTransientTerms(mat, S + vecoffs);
+                FVM::TermLog::matrix() = false;
+
+                // The unknown to which this operator should be applied is a
+                // "trivial" unknown quantity, meaning it does not appear in the
+                // equation system matrix. We therefore build it as part of the
+                // RHS vector.
+                //
+                // (In kinetic-only mode these terms are dropped altogether:
+                // see SolverLinearlyImplicit::initialize_kinetic_only().)
+            }
+            else if (!this->dropNonMatrixTerms)
+            {
+                PetscInt vecoffs = mat->GetOffset(matUqnId) - rstart;
+                const real_t *data = unknowns->GetUnknownData(it->first);
+                if (log)
+                    printf("[matrix]    block (%s, %s) -> RHS (%s is not in the matrix)\n",
+                           unknowns->GetUnknown(uqnId)->GetName().c_str(), colName, colName);
+                FVM::TermLog::matrix() = log;
+                it->second->SetVectorElementsTransientTerms(S + vecoffs, data);
+                FVM::TermLog::matrix() = false;
+            }
+            else if (log)
+                printf("[matrix]    block (%s, %s) -> DROPPED (kinetic-only: %s is not in the matrix)\n",
+                       unknowns->GetUnknown(uqnId)->GetName().c_str(), colName, colName);
+
+            if (log)
+                printf("[matrix]      block total %56s %9.3f ms\n", "", ms(t0, clk::now()));
+        }
+    }
+
+    t0 = clk::now();
+    mat->Assemble();
+    if (log)
+    {
+        printf("[matrix]  final assembly %62s %9.3f ms\n", "", ms(t0, clk::now()));
+        printf("[matrix]  BuildMatrixTransientTerm total %46s %9.3f ms\n", "", ms(tAll, clk::now()));
+    }
+}
+
+/**
  * Build a function vector for the equation system.
  *
  * t:   Time to build the function vector for.
@@ -517,6 +643,174 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
             FVM::TermLog::rebuild() = log;
             t0 = clk::now();
             it->second->RebuildTerms(t, dt, unknowns);
+            FVM::TermLog::rebuild() = false;
+            if (log)
+                printf("[rebuild]           operator total %50s %9.3f ms\n", "", ms(t0, clk::now()));
+        }
+    }
+
+    solver_timeKeeper->StopTimer(timerRebuildTerms);
+    solver_timeKeeper->StopTimer(timerTot);
+}
+
+/**
+ * Rebuild all equation terms in the equation system for
+ * the specified time.
+ *
+ * t:  Time for which to rebuild the equation system.
+ * dt: Length of time step to take next.
+ */
+void Solver::RebuildTermsTransientTerm(const real_t t, const real_t dt)
+{
+    // Optional log of what is rebuilt, with the time each part takes:
+    //   -dream_log_rebuild      log the first call
+    //   -dream_log_rebuild N    log the first N calls
+    static PetscInt nLog = -1;
+    static PetscInt nCalls = 0;
+    if (nLog < 0)
+    {
+        PetscBool set = PETSC_FALSE;
+        PetscOptionsHasName(NULL, NULL, "-dream_log_rebuild", &set);
+        nLog = 0;
+        if (set)
+        {
+            nLog = 1;
+            PetscOptionsGetInt(NULL, NULL, "-dream_log_rebuild", &nLog, NULL);
+        }
+    }
+    nCalls++;
+    const bool log = (nCalls <= nLog);
+
+    typedef std::chrono::steady_clock clk;
+    auto ms = [](clk::time_point a, clk::time_point b)
+    { return std::chrono::duration<double, std::milli>(b - a).count(); };
+
+    if (log)
+        printf("\n[rebuild] call %d: t = %g, dt = %g\n", (int)nCalls, (double)t, (double)dt);
+
+    solver_timeKeeper->StartTimer(timerTot);
+
+    clk::time_point t0 = clk::now();
+    // this->ionHandler->Rebuild();
+    // Rebuild ionHandler, collision handlers and RunawayFluid
+    if (log)
+        printf("[rebuild]  1. SKIP IonHandler                       %9.3f ms\n", ms(t0, clk::now()));
+
+    solver_timeKeeper->StartTimer(timerCqh);
+    if (!this->first_build_constant_term)
+    {
+        t0 = clk::now();
+        if (this->cqh_hottail != nullptr)
+            this->cqh_hottail->Rebuild();
+        if (log)
+            printf("[rebuild]  2. collision handler, hot-tail     %s%9.3f ms\n",
+                   this->cqh_hottail != nullptr ? "" : "(none) ", ms(t0, clk::now()));
+        t0 = clk::now();
+        if (this->cqh_runaway != nullptr)
+            this->cqh_runaway->Rebuild();
+        if (log)
+            printf("[rebuild]  3. collision handler, runaway      %s%9.3f ms\n",
+                   this->cqh_runaway != nullptr ? "" : "(none) ", ms(t0, clk::now()));
+        solver_timeKeeper->StopTimer(timerCqh);
+        this->first_build_constant_term = true;
+    }
+    else
+    {
+        if (log)
+        {
+            printf("[rebuild]  3.  SKIP collision handler\n");
+        }
+    }
+
+    solver_timeKeeper->StartTimer(timerREFluid);
+    t0 = clk::now();
+    // this->REFluid->Rebuild(t);
+    if (log)
+        printf("[rebuild]  4. SKIP RunawayFluid                     %9.3f ms\n", ms(t0, clk::now()));
+    solver_timeKeeper->StopTimer(timerREFluid);
+
+    solver_timeKeeper->StartTimer(timerRebuildTerms);
+    // Update prescribed quantities and external unknowns
+    if (log)
+        printf("[rebuild]  5. predetermined unknowns (rebuilt and stored):\n");
+    const len_t N = unknowns->Size();
+    for (len_t i = 0; i < N; i++)
+    {
+        FVM::UnknownQuantity *uqty = unknowns->GetUnknown(i);
+        UnknownQuantityEquation *eqn = unknown_equations->at(i);
+
+        if (eqn->IsPredetermined())
+        {
+            t0 = clk::now();
+            eqn->RebuildEquations(t, dt, unknowns);
+            FVM::PredeterminedParameter *pp = eqn->GetPredetermined();
+            uqty->Store(pp->GetData(), 0, true);
+            if (log)
+                printf("[rebuild]       %-12s (%s) %9.3f ms\n", uqty->GetName().c_str(),
+                       eqn->GetDescription().c_str(), ms(t0, clk::now()));
+        }
+    }
+
+    solver_timeKeeper->StartTimer(timerSPIHandler);
+    if (this->SPI != nullptr)
+    {
+        t0 = clk::now();
+        this->SPI->Rebuild(dt, t);
+        if (log)
+            printf("[rebuild]  6. SPIHandler                       %9.3f ms\n", ms(t0, clk::now()));
+    }
+    else if (log)
+        printf("[rebuild]  6. SPIHandler                       (none)\n");
+    solver_timeKeeper->StopTimer(timerSPIHandler);
+
+    if (this->bootstrap != nullptr)
+    {
+        t0 = clk::now();
+        this->bootstrap->Rebuild();
+        if (log)
+            printf("[rebuild]  7. BootstrapCurrent                 %9.3f ms\n", ms(t0, clk::now()));
+    }
+    else if (log)
+        printf("[rebuild]  7. BootstrapCurrent                 (none)\n");
+
+    if (log)
+        printf("[rebuild]  8. equation operators of the %d non-trivial unknown(s):\n",
+               (int)nontrivial_unknowns.size());
+    for (len_t i = 0; i < nontrivial_unknowns.size(); i++)
+    {
+        len_t uqnId = nontrivial_unknowns[i];
+        UnknownQuantityEquation *eqn = unknown_equations->at(uqnId);
+
+        if (log)
+            printf("[rebuild]       equation for %s: %s\n",
+                   unknowns->GetUnknown(uqnId)->GetName().c_str(),
+                   eqn->GetDescription().c_str());
+
+        for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
+        {
+            // Only the transient terms are rebuilt here
+            if (!it->second->HasTransientTerm())
+                continue;
+
+            if (log)
+                printf("[rebuild]         operator on %-10s (transient terms only)\n",
+                       unknowns->GetUnknown(it->first)->GetName().c_str());
+
+            // Tell its transient terms which rows of this equation are ours
+            FVM::BlockMatrix *bm = this->GetMatrix();
+            if (bm != nullptr)
+            {
+                PetscInt rstart, nloc;
+                bm->GetOwnershipRange(&rstart, &nloc);
+                it->second->SetLocalRange(
+                    rstart, rstart + nloc,
+                    bm->GetOffset(unknownToMatrixMapping[uqnId]));
+            }
+
+            // The operator itself prints each of its terms, with timings
+            FVM::TermLog::rebuild() = log;
+            t0 = clk::now();
+            it->second->RebuildTransientTerms(t, dt, unknowns);
             FVM::TermLog::rebuild() = false;
             if (log)
                 printf("[rebuild]           operator total %50s %9.3f ms\n", "", ms(t0, clk::now()));

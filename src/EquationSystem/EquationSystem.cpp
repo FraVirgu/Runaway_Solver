@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string>
 #include <softlib/Timer.h>
+#include <petscvec.h>
 #include "DREAM/Settings/KineticOnly.hpp"
 #include "DREAM/EquationSystem.hpp"
 #include "DREAM/IO.hpp"
@@ -121,6 +122,66 @@ EquationSystem::~EquationSystem()
 }
 
 /**
+ * Save the initial values of f_hot and f_re to the PETSc binary file
+ * 'petsc_solution_initial', as a single vector with f_hot first and
+ * f_re second. This is the layout of the solution vectors the solver
+ * saves in kinetic-only mode ('petsc_solution_serial_step...'), so the
+ * file can be loaded in the same way. A distribution that is not part
+ * of the simulation is left out.
+ *
+ * unknowns: Unknown quantities, with their initial values set.
+ */
+static void SaveInitialDistributions(FVM::UnknownQuantityHandler &unknowns)
+{
+    // The file is written by a single rank, from its own copy of the
+    // unknowns
+    int rank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
+    if (rank != 0)
+        return;
+
+    vector<len_t> ids;
+    PetscInt n = 0;
+    for (const char *name : {OptionConstants::UQTY_F_HOT, OptionConstants::UQTY_F_RE})
+    {
+        if (!unknowns.HasUnknown(name))
+            continue;
+
+        const len_t id = unknowns.GetUnknownID(name);
+        if (!unknowns.HasInitialValue(id))
+            continue;
+
+        ids.push_back(id);
+        n += unknowns.GetUnknown(id)->NumberOfElements();
+    }
+
+    if (ids.empty())
+        return;
+
+    Vec init;
+    VecCreateSeq(PETSC_COMM_SELF, n, &init);
+
+    PetscScalar *x;
+    VecGetArray(init, &x);
+    PetscInt offset = 0;
+    for (len_t id : ids)
+    {
+        const real_t *data = unknowns.GetUnknownInitialData(id);
+        const len_t nElements = unknowns.GetUnknown(id)->NumberOfElements();
+        for (len_t i = 0; i < nElements; i++)
+            x[offset + i] = data[i];
+        offset += nElements;
+    }
+    VecRestoreArray(init, &x);
+
+    PetscViewer viewer;
+    PetscViewerBinaryOpen(PETSC_COMM_SELF, "petsc_solution_initial", FILE_MODE_WRITE, &viewer);
+    VecView(init, viewer);
+    PetscViewerDestroy(&viewer);
+    VecDestroy(&init);
+}
+
+/**
  * Processes the system after it has been initialized and
  * prepares it for being solved. This includes setting
  * initial values for those unknown quantities which do
@@ -179,6 +240,9 @@ void EquationSystem::ProcessSystem(const real_t t0)
     std::cout << "Inside EquationSystem,Process_System SKIP initializer->Execute(t0); => all the unknown to be computed are passed by input" << std::endl;
     // Set initial values
     this->initializer->Execute(t0);
+
+    // Save the initial condition of the distribution functions
+    SaveInitialDistributions(this->unknowns);
 
     if (unknownMissing)
         throw EquationSystemException("While processing equation system: Equations not declared for some unknowns.");
@@ -288,53 +352,140 @@ void EquationSystem::Solve()
     cout << "Beginning time advance..." << endl;
     Timer tim;
     len_t istep = 0; // Number of times 'solver->Solve()' has been called...
-    while (!timestepper->IsFinished())
+
+    // while (!timestepper->IsFinished())
+    // {
+    //     // Take step
+    //     real_t tNext = timestepper->NextTime();
+    //     this->currentTime = timestepper->CurrentTime();
+    //     real_t dt = tNext - this->currentTime;
+
+    //     this->fluidGrid->Rebuild(tNext);
+
+    //     try
+    //     {
+    //         istep++;
+    //         solver->Solve(tNext, dt);
+
+    //         timestepper->ValidateStep();
+
+    //         // Post-process solution (should be done before saving any
+    //         // time step)
+    //         this->postProcessor->Process(tNext);
+
+    //         if (timestepper->IsSaveStep())
+    //         {
+    //             this->TimestepFinished();
+
+    //             // true = Really save the step (if it's false, we just
+    //             // indicate that we have taken another timestep). This
+    //             // should only be true for time steps which we want to
+    //             // push to the output file.
+    //             unknowns.SaveStep(tNext, true);
+    //             this->times.push_back(tNext);
+
+    //             otherQuantityHandler->StoreAll(tNext);
+    //         }
+    //         else
+    //             unknowns.SaveStep(tNext, false);
+
+    //         timestepper->PrintProgress();
+    //     }
+    //     catch (DREAM::QuitException &ex)
+    //     {
+    //         // Rethrow quit exception
+    //         throw ex;
+    //     }
+    //     catch (FVM::FVMException &ex)
+    //     {
+    //         timestepper->HandleException(ex);
+    //     }
+    // }
+
+    // FIRST ITERATION IS FOR SET UP Does not count in the metrics
+    try
     {
-        // Take step
         real_t tNext = timestepper->NextTime();
         this->currentTime = timestepper->CurrentTime();
         real_t dt = tNext - this->currentTime;
+        istep++;
+        solver->Solve(tNext, dt);
 
-        this->fluidGrid->Rebuild(tNext);
+        timestepper->ValidateStep();
 
-        try
+        // Post-process solution (should be done before saving any
+        // time step)
+        this->postProcessor->Process(tNext);
+
+        if (timestepper->IsSaveStep())
         {
-            istep++;
-            solver->Solve(tNext, dt);
+            this->TimestepFinished();
 
-            timestepper->ValidateStep();
+            // true = Really save the step (if it's false, we just
+            // indicate that we have taken another timestep). This
+            // should only be true for time steps which we want to
+            // push to the output file.
+            unknowns.SaveStep(tNext, true);
+            this->times.push_back(tNext);
 
-            // Post-process solution (should be done before saving any
-            // time step)
-            this->postProcessor->Process(tNext);
-
-            if (timestepper->IsSaveStep())
-            {
-                this->TimestepFinished();
-
-                // true = Really save the step (if it's false, we just
-                // indicate that we have taken another timestep). This
-                // should only be true for time steps which we want to
-                // push to the output file.
-                unknowns.SaveStep(tNext, true);
-                this->times.push_back(tNext);
-
-                otherQuantityHandler->StoreAll(tNext);
-            }
-            else
-                unknowns.SaveStep(tNext, false);
-
-            timestepper->PrintProgress();
+            otherQuantityHandler->StoreAll(tNext);
         }
-        catch (DREAM::QuitException &ex)
+        else
+            unknowns.SaveStep(tNext, false);
+
+        timestepper->PrintProgress();
+    }
+    catch (DREAM::QuitException &ex)
+    {
+        // Rethrow quit exception
+        throw ex;
+    }
+    catch (FVM::FVMException &ex)
+    {
+        timestepper->HandleException(ex);
+    }
+
+    // SECOND ITERATION IS FOR metrics
+    try
+    {
+        real_t tNext = timestepper->NextTime();
+        this->currentTime = timestepper->CurrentTime();
+        real_t dt = tNext - this->currentTime;
+        istep++;
+        solver->Solve(tNext, dt);
+
+        timestepper->ValidateStep();
+
+        // Post-process solution (should be done before saving any
+        // time step)
+        this->postProcessor->Process(tNext);
+
+        if (timestepper->IsSaveStep())
         {
-            // Rethrow quit exception
-            throw ex;
+            this->TimestepFinished();
+
+            // true = Really save the step (if it's false, we just
+            // indicate that we have taken another timestep). This
+            // should only be true for time steps which we want to
+            // push to the output file.
+            unknowns.SaveStep(tNext, true);
+            this->times.push_back(tNext);
+
+            otherQuantityHandler->StoreAll(tNext);
         }
-        catch (FVM::FVMException &ex)
-        {
-            timestepper->HandleException(ex);
-        }
+        else
+            unknowns.SaveStep(tNext, false);
+
+        timestepper->PrintProgress();
+    }
+    catch (DREAM::QuitException &ex)
+    {
+        // Rethrow quit exception
+        throw ex;
+    }
+    catch (FVM::FVMException &ex)
+    {
+        timestepper->HandleException(ex);
     }
 
     cout << endl;

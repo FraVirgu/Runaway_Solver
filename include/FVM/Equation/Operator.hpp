@@ -69,6 +69,12 @@ namespace DREAM::FVM {
 
 		bool HasTransientTerm() const { return this->hasTransientTerm; }
 
+        // Same as RebuildTerms(), SetMatrixElements() and SetVectorElements(),
+        // but for the transient terms of the operator only
+        void RebuildTransientTerms(const real_t, const real_t, UnknownQuantityHandler*);
+        void SetMatrixElementsTransientTerms(Matrix*, real_t*);
+        void SetVectorElementsTransientTerms(real_t*, const real_t*);
+
         EquationTerm *GetTermByID(const int_t id) { return this->identifiableTerms[id]; }
 
         const real_t *const* GetAdvectionCoeffR() const { return this->adterm->GetAdvectionCoeffR(); }

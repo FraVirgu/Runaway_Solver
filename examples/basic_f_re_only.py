@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 #
-# Kinetic-only DREAM run, with parameters matched to
+# Kinetic-only DREAM run on a single momentum grid, with parameters
+# matched to
 #
 #   J. Rudi, M. Heldman, E. M. Constantinescu, Q. Tang, X.-Z. Tang,
 #   "Scalable Implicit Solvers with Dynamic Mesh Adaptation for a
@@ -19,14 +20,20 @@
 # and only the radial term of Eq. (1) remains as a difference -- which is
 # removed here by taking Nr = 1 with no transport.
 #
+# Unlike basic_kinetic_only.py, which splits the momentum range between
+# the hot-tail and the runaway grid, the hot-tail grid is disabled here and
+# the runaway grid alone covers the paper's domain [p_min, p_max]. There is
+# then a single distribution, f_re, a single initial condition and no
+# interface between grids.
+#
 # All quantities the paper fixes are listed under "Paper parameters" below
 # and converted to DREAM's units in "Derived quantities", which are printed
 # so that the correspondence can be checked.
 #
 # Run as
 #
-#   $ ./basic_kinetic_paper.py
-#   $ cd $DREAM_ROOT/build/iface && ./dreami dream_settings_paper.h5
+#   $ ./basic_f_re_only.py
+#   $ cd $DREAM_ROOT/build/iface && ./dreami dream_settings_f_re_only.h5
 #
 # ###################################################################
 
@@ -119,33 +126,24 @@ E = E_NORM * E_c
 # Grid and time stepping
 # =====================================================================
 # The paper uses a base mesh of 48 x 8 with up to 6-7 further levels of
-# refinement, so its effective resolution in pitch is far higher than the
-# base suggests. A uniform grid is used here; Nxi is raised well above the
-# value used in earlier runs, since the distribution becomes "extreme[ly]
-# anisotropic ... increasingly aggravated for higher electron energies"
-# (Sec. 1) and an under-resolved pitch direction would flatter the
-# iteration counts.
-Np   = 1500
-Nxi  = 100
-Nr   = 1
+# refinement, concentrated where f varies most steeply. Near p_min the
+# Maxwellian tail falls off on the scale v_t^2 / (2 p) ~ 0.02, far below
+# what a uniform grid over [p_min, p_max] can afford, so the grid is
+# bi-uniform in p instead: NP_SEP of the Np cells lie in [P_MIN, P_SEP]
+# and the rest in [P_SEP, P_MAX]. The pitch grid is uniform.
+Np     = 3000
+NP_SEP = 1500               # cells in [P_MIN, P_SEP]
+P_SEP  = 1.0
+Nxi    = 100
+Nr     = 1
 
 # Time, in units of tau_c. The paper runs to T_final = 1 for its physics
 # studies with an averaged time step near 0.004 tau_c; a shorter interval
 # suffices for solver measurements.
-T_FINAL_NORM = 0.05
+T_FINAL_NORM = 1.0
 Nt = 100
 
 tMax = T_FINAL_NORM * tau_c
-
-# The momentum range is covered by two grids rather than the paper's one,
-# joined at p = P_RE by the conservative flux-matching interface. The two
-# populations call for opposite resolutions -- the hot region varies
-# steeply in p and is nearly isotropic in xi, the runaway tail the reverse
-# -- which is the same requirement the paper meets by adapting a single
-# mesh. The interface is therefore a structural difference from the paper
-# and shows up in the matrix as the sparse off-diagonal blocks coupling
-# the two kinetic unknowns at p = P_RE.
-P_RE = 1.0                  # hot/runaway interface
 
 # =====================================================================
 # Initial condition
@@ -163,15 +161,14 @@ P_RE = 1.0                  # hot/runaway interface
 # The paper's f0 is normalised to unit density, whereas DREAM's f carries
 # the density, so both terms are multiplied by n.
 #
-# f0 is tabulated once, on an input grid covering the whole momentum range,
-# and the same table is given to both f_hot and f_re; DREAM interpolates it
-# (linearly) onto each of its grids. The input grid is independent of
-# Np and Nxi, so it must itself resolve f0: the Maxwellian varies on the
-# scale v_t in p, hence the fine spacing below P_RE, and the perturbation
-# has widths 5 in p and 0.05 in xi.
+# f0 is tabulated on an input grid covering [P_MIN, P_MAX], which DREAM
+# interpolates (linearly) onto its own grid. The input grid is independent
+# of Np and Nxi, so it must itself resolve f0: the Maxwellian tail varies
+# on the scale v_t^2 / (2 p) in p, hence the fine spacing below P_SEP, and
+# the perturbation has widths 5 in p and 0.05 in xi.
 BUMP_AMPLITUDE = 1e-15
-BUMP_P,  BUMP_P_WIDTH2  = 10, 25.0
-BUMP_XI, BUMP_XI_WIDTH2 = -0.9, 0.0025
+BUMP_P,  BUMP_P_WIDTH2  = 40, 25.0      # the paper centres it at p = 40
+BUMP_XI, BUMP_XI_WIDTH2 = +0.9, 0.0025
 
 def f0(p, xi):
     """f0 on the grid (p, xi), with shape (1, nxi, np)."""
@@ -181,10 +178,10 @@ def f0(p, xi):
                           * np.exp(-(XI - BUMP_XI)**2 / BUMP_XI_WIDTH2)
     return (n * (maxwellian + bump))[np.newaxis, :, :]
 
-NP_INIT_HOT, NP_INIT_RE, NXI_INIT = 2000, 2000, 400
+NP_INIT_FINE, NP_INIT_COARSE, NXI_INIT = 2000, 2000, 400
 
-p_init  = np.concatenate((np.linspace(0, P_RE, NP_INIT_HOT + 1),
-                          np.linspace(P_RE, P_MAX, NP_INIT_RE + 1)[1:]))
+p_init  = np.concatenate((np.linspace(P_MIN, P_SEP, NP_INIT_FINE + 1),
+                          np.linspace(P_SEP, P_MAX, NP_INIT_COARSE + 1)[1:]))
 xi_init = np.linspace(-1, 1, NXI_INIT + 1)
 f_init  = f0(p_init, xi_init)
 
@@ -205,9 +202,10 @@ print(f'  E                      {E:.4e} V/m')
 print(f'  B_0                    {B0:.3f} T')
 print(f'  tau_s                  {tau_s:.4e} s')
 print(f'  alpha = tau_c/tau_s    {alpha:.4f}          (paper: 0.001 - 0.3)')
-print(f'  p range                [{P_MIN:.2f}, {P_MAX:.1f}]  (paper: single grid)')
-print(f'    hot-tail grid        [0, {P_RE:.1f}]        Np={Np}, Nxi={Nxi}')
-print(f'    runaway grid         [{P_RE:.1f}, {P_MAX:.1f}]      Np={Np}, Nxi={Nxi}')
+print(f'  p range                [{P_MIN:.2f}, {P_MAX:.1f}]  (paper: [0.30, 60.0])')
+print(f'    runaway grid         Np={Np}, Nxi={Nxi}')
+print(f'      [{P_MIN:.2f}, {P_SEP:.1f}]         {NP_SEP} cells, dp = {(P_SEP-P_MIN)/NP_SEP:.2e}')
+print(f'      [{P_SEP:.1f}, {P_MAX:.1f}]         {Np-NP_SEP} cells, dp = {(P_MAX-P_SEP)/(Np-NP_SEP):.2e}')
 print(f'  Nr                     {Nr}')
 print(f'  t_max                  {tMax:.4e} s   ({T_FINAL_NORM:.3f} tau_c)')
 print('=' * 62)
@@ -241,29 +239,28 @@ ds.eqsys.n_re.setAvalanche(avalanche=Runaways.AVALANCHE_MODE_NEGLECT)
 # ---------------------------------------------------------------------
 # Kinetic grid
 # ---------------------------------------------------------------------
-# Hot-tail grid: [0, P_RE].
-ds.hottailgrid.setNxi(Nxi)
-ds.hottailgrid.setNp(Np)
-ds.hottailgrid.setPmax(P_RE)
+# The hot-tail grid is disabled; the runaway grid covers [P_MIN, P_MAX].
+# Its lower limit is only taken from the settings when it is the only
+# kinetic grid, as it is here.
+ds.hottailgrid.setEnabled(False)
 
-ds.eqsys.f_hot.setInitialValue(f_init, r=[0], p=p_init, xi=xi_init)
-ds.eqsys.f_hot.setBoundaryCondition(DistFunc.BC_F_0)
-ds.eqsys.f_hot.setAdvectionInterpolationMethod(DistFunc.AD_INTERP_UPWIND)
-
-# Synchrotron damping, the alpha R(f) term of Eq. (4). Enabled here,
-# unlike in the earlier runs; its strength follows from B_0 above.
-ds.eqsys.f_hot.setSynchrotronMode(DistFunc.SYNCHROTRON_MODE_INCLUDE)
-
-# Runaway grid: [P_RE, P_MAX]. The same equation is solved on both, but the
-# collision frequencies scale as p^-3, so the operator is diffusion-
-# dominated on the hot grid and close to pure advection here.
 ds.runawaygrid.setEnabled(True)
 ds.runawaygrid.setNp(Np)
 ds.runawaygrid.setNxi(Nxi)
+ds.runawaygrid.setPmin(P_MIN)
 ds.runawaygrid.setPmax(P_MAX)
+ds.runawaygrid.setBiuniformGrid(psep=P_SEP, npsep=NP_SEP)
+
 ds.eqsys.f_re.setInitialValue(f_init, r=[0], p=p_init, xi=xi_init)
-ds.eqsys.f_re.setSynchrotronMode(DistFunc.SYNCHROTRON_MODE_INCLUDE)
 ds.eqsys.f_re.setAdvectionInterpolationMethod(DistFunc.AD_INTERP_UPWIND)
+
+# Upper boundary, p = P_MAX: the flux out of the grid is extrapolated from
+# the interior. (The lower boundary is discussed at the end of this file.)
+ds.eqsys.f_re.setBoundaryCondition(DistFunc.BC_PHI_CONST)
+
+# Synchrotron damping, the alpha R(f) term of Eq. (4); its strength
+# follows from B_0 above.
+ds.eqsys.f_re.setSynchrotronMode(DistFunc.SYNCHROTRON_MODE_INCLUDE)
 
 # ---------------------------------------------------------------------
 # Geometry: cylindrical, one radial cell, no transport
@@ -291,9 +288,9 @@ ds.timestep.setTmax(tMax)
 ds.timestep.setNt(Nt)
 
 ds.output.setTiming(stdout=True, file=True)
-ds.output.setFilename('output_paper.h5')
+ds.output.setFilename('output_f_re_only.h5')
 
-ds.save(os.path.join(OUT_DIR, 'dream_settings_paper.h5'))
+ds.save(os.path.join(OUT_DIR, 'dream_settings_f_re_only.h5'))
 
 with open(os.path.join(OUT_DIR, 'petsc_num_timesteps.txt'), 'w') as f:
     f.write(str(int(Nt)) + '\n')
@@ -304,18 +301,21 @@ with open(os.path.join(OUT_DIR, 'petsc_num_timesteps.txt'), 'w') as f:
 print()
 print('Differences that could not be removed from the settings:')
 print()
-print('  p_min   The paper truncates at p_min = 3 v_t and imposes a')
-print('          Dirichlet Maxwellian there, so the thermal bulk is never')
-print('          resolved. DREAM\'s hot-tail grid begins at p = 0, so the')
-print('          bulk is resolved kinetically. This is where nu_s, nu_D ~')
-print('          p^-3 are largest and the operator stiffest, so it affects')
-print('          both conditioning and cost. The nearest equivalent is the')
-print('          superthermal collision mode, which takes T_cold -> 0 and')
-print('          drains the bulk off the grid instead.')
+print('  p_min   The domain starts at p_min = 3 v_t, as in the paper, but')
+print('          the paper imposes a Dirichlet Maxwellian there, whereas')
+print('          DREAM has no boundary condition at the lower edge of a')
+print('          runaway grid that is the only kinetic grid: the flux')
+print('          through p = p_min is zero. Particles slowing down below')
+print('          the critical momentum therefore pile up at p_min instead')
+print('          of leaving the domain.')
+print()
+print('  p_max   The paper applies a Neumann condition at p_max. DREAM')
+print('          extrapolates the flux out of the grid from the interior.')
 print()
 print('  mesh    The paper adapts the mesh, reaching 6-8 further levels of')
-print('          refinement over a 48 x 8 base. The grid here is uniform,')
-print('          so iteration counts are not compared at equal resolution.')
+print('          refinement over a 48 x 8 base. The grid here is fixed,')
+print('          refined in p below P_SEP only, so iteration counts are')
+print('          not compared at equal resolution.')
 print()
 print('  moments DREAM retains the fluid unknowns as equations even when')
 print('          their values are prescribed, so the moment operators are')

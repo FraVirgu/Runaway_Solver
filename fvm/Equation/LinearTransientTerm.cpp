@@ -29,9 +29,8 @@ LinearTransientTerm::LinearTransientTerm(Grid *grid, const len_t unknownId)
  */
 void LinearTransientTerm::Rebuild(const real_t, const real_t dt, UnknownQuantityHandler *uqty) {
     this->dt = dt;
-    len_t nloc;
     this->xn = uqty->GetUnknown(this->unknownId)->GetDataPreviousLocal(
-        this->rstart, this->rend, this->rowOffset, &nloc
+        this->rstart, this->rend, this->rowOffset, &this->nloc, &this->ifirst
     );
 
     if(!hasBeenInitialized){
@@ -65,13 +64,17 @@ void LinearTransientTerm::SetMatrixElements(Matrix *mat, real_t *rhs) {
 	if (this->dt == 0)
 		return;
 
-    const len_t N = grid->GetNCells();
-    for (len_t i = 0; i < N; i++)
+    // Only the elements (matrix rows) owned by this rank
+    for (len_t k = 0; k < this->nloc; k++) {
+        const len_t i = this->ifirst + k;
         mat->SetElement(i, i, weights[i]/this->dt, ADD_VALUES);
+    }
 
     if (rhs != nullptr)
-        for (len_t i = 0; i < N; i++)
-            rhs[i] -= weights[i]*this->xn[i] / this->dt;
+        for (len_t k = 0; k < this->nloc; k++) {
+            const len_t i = this->ifirst + k;
+            rhs[i] -= weights[i]*this->xn[k] / this->dt;
+        }
 }
 
 /**
@@ -88,9 +91,10 @@ void LinearTransientTerm::SetVectorElements(real_t *vec, const real_t *xnp1) {
 	if (this->dt == 0)
 		return;
 
-    const len_t N = grid->GetNCells();
-
-    for (len_t i = 0; i < N; i++)
-        vec[i] += weights[i]*(xnp1[i] - xn[i]) / this->dt;
+    // Only the elements owned by this rank
+    for (len_t k = 0; k < this->nloc; k++) {
+        const len_t i = this->ifirst + k;
+        vec[i] += weights[i]*(xnp1[i] - xn[k]) / this->dt;
+    }
 }
 

@@ -148,6 +148,72 @@ void Operator::SetLocalRange(const PetscInt rstart, const PetscInt rend, const P
 }
 
 /**
+ * Build the coefficients of the transient terms of this operator only
+ * (see 'RebuildTerms()' for all terms).
+ *
+ * t:  Time for which to build the operator.
+ * dt: Length of time step to take.
+ */
+void Operator::RebuildTransientTerms(const real_t t, const real_t dt, UnknownQuantityHandler *uqty)
+{
+    const bool log = TermLog::rebuild();
+    TermLog::clk::time_point t0;
+
+    for (auto term : transientTerms)
+    {
+        t0 = TermLog::clk::now();
+        term->Rebuild(t, dt, uqty);
+        if (log)
+            printf("[rebuild]             term (transient)     %-34s %9.3f ms\n",
+                   TermLog::Label(term).c_str(), TermLog::ms(t0, TermLog::clk::now()));
+    }
+}
+
+/**
+ * Set the linear operator matrix elements of the transient terms of this
+ * operator only (see 'SetMatrixElements()' for all terms).
+ *
+ * mat: Matrix to set elements of.
+ * rhs: Vector representing equation right-hand-side.
+ */
+void Operator::SetMatrixElementsTransientTerms(Matrix *mat, real_t *rhs)
+{
+    const bool log = TermLog::matrix();
+    TermLog::clk::time_point t0;
+
+    for (auto term : transientTerms)
+    {
+        t0 = TermLog::clk::now();
+        term->SetMatrixElements(mat, rhs);
+        if (log)
+            printf("[matrix]              term (transient)     %-34s %9.3f ms\n",
+                   TermLog::Label(term).c_str(), TermLog::ms(t0, TermLog::clk::now()));
+    }
+}
+
+/**
+ * Evaluate the transient terms of this operator only (see
+ * 'SetVectorElements()' for all terms).
+ *
+ * vec: Function vector to assign evaluated operator to.
+ * x:   Value of the unknown to evaluate the function for.
+ */
+void Operator::SetVectorElementsTransientTerms(real_t *vec, const real_t *x)
+{
+    const bool log = TermLog::matrix();
+    TermLog::clk::time_point t0;
+
+    for (auto term : transientTerms)
+    {
+        t0 = TermLog::clk::now();
+        term->SetVectorElements(vec, x);
+        if (log)
+            printf("[matrix]              term (transient)     %-34s %9.3f ms\n",
+                   TermLog::Label(term).c_str(), TermLog::ms(t0, TermLog::clk::now()));
+    }
+}
+
+/**
  * Add a boundary condition to this operator.
  */
 void Operator::AddBoundaryCondition(BC::BoundaryCondition *bc)
