@@ -6,11 +6,14 @@
  *
  *     A_kk x_k = b_k - A_kf x_f
  *
- * x_f is taken from a reference solution of the FULL system, loaded from
- * the file given by -ref_solution (default: petsc_solution_miilu, as
- * written by testhypre). The solved x_k is then compared with the kinetic
- * part of that reference, so a correct run reproduces the reference up to
- * its own solver tolerance.
+ * If a reference solution of the FULL system exists (the file given by
+ * -ref_solution, default petsc_solution_miilu, as written by testhypre), x_f
+ * is taken from it and the solved x_k is compared with its kinetic part.
+ * If it does not exist, nothing else needs to be run first: the fluid
+ * unknowns are taken as 0 and the reference is a GMRES + BoomerAMG solve (diag
+ * scaling, tight tolerance) of the same kinetic system, computed here. If the
+ * matrix is kinetic-only (Nhot+Nre == N, written by
+ * dreami with -dream_kinetic_only) there is no fluid block at all.
  *
  * One source, two executables (see iface/CMakeLists.txt):
  *   testkinetichypreserial    compiled with KINETIC_SERIAL: must be run with
@@ -63,12 +66,17 @@ static void LoadVec(const char *name, Vec *x)
     PetscViewerDestroy(&v);
 }
 
-
-enum class Scale { None, Diag, Ruiz };
+enum class Scale
+{
+    None,
+    Diag,
+    Ruiz
+};
 
 static const char *ScaleName(Scale s)
 {
-    return s == Scale::None ? "none" : s == Scale::Diag ? "diag" : "ruiz";
+    return s == Scale::None ? "none" : s == Scale::Diag ? "diag"
+                                                        : "ruiz";
 }
 
 /**
@@ -231,6 +239,67 @@ static PetscInt SolveConfig(Mat A0, Vec rhs0, Vec xk_ref, Scale mode,
     return its;
 }
 
+/**
+ * Reference solution of A x = b with GMRES + hypre/BoomerAMG (the same solver
+ * as the runs being tested), after row scaling with 1/|diag(A)| and to a tight
+ * tolerance. Used when no reference solution file is available. The scaling
+ * and the settings of this solve are fixed (under the prefix "amgref_"), so
+ * that -scale and the other options only affect the runs under test.
+ */
+static void SolveAMGReference(Mat A0, Vec b, Vec x, int my_rank)
+{
+    Mat As;
+    Vec L, R, rhs, y;
+    MatDuplicate(A0, MAT_COPY_VALUES, &As);
+    MatCreateVecs(A0, &y, &rhs);
+    VecDuplicate(rhs, &L);
+    VecDuplicate(rhs, &R);
+
+    // A' = L A, rhs' = L b (R = 1 for the diagonal scaling, so x = y)
+    BuildScaling(A0, Scale::Diag, L, R);
+    MatDiagonalScale(As, L, R);
+    VecPointwiseMult(rhs, L, b);
+    VecSet(y, 0.0);
+
+    KSP ksp;
+    PC pc;
+    KSPCreate(PETSC_COMM_WORLD, &ksp);
+    KSPSetOptionsPrefix(ksp, "amgref_");
+    KSPSetOperators(ksp, As, As);
+    KSPSetType(ksp, KSPGMRES);
+    KSPGMRESSetRestart(ksp, 100);
+    KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, 1000);
+    KSPSetInitialGuessNonzero(ksp, PETSC_FALSE);
+    KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
+    KSPGetPC(ksp, &pc);
+    PCSetType(pc, PCHYPRE);
+    PCHYPRESetType(pc, "boomeramg");
+    KSPSetFromOptions(ksp);
+
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double t0 = MPI_Wtime();
+    KSPSetUp(ksp);
+    KSPSolve(ksp, rhs, y);
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double elapsed = MPI_Wtime() - t0;
+
+    PetscInt its;
+    KSPConvergedReason reason;
+    KSPGetIterationNumber(ksp, &its);
+    KSPGetConvergedReason(ksp, &reason);
+    if (my_rank == 0)
+        printf("reference (GMRES + BoomerAMG, diag scaling, rtol 1e-12): its %d, %s, %.3f s\n",
+               (int)its, reason > 0 ? "converged" : "DIVERGED", elapsed);
+
+    VecPointwiseMult(x, R, y); // x = R y
+    KSPDestroy(&ksp);
+    MatDestroy(&As);
+    VecDestroy(&y);
+    VecDestroy(&rhs);
+    VecDestroy(&L);
+    VecDestroy(&R);
+}
+
 int main(int argc, char *argv[])
 {
     MPI_Init(&argc, &argv);
@@ -267,19 +336,25 @@ int main(int argc, char *argv[])
     char refname[PETSC_MAX_PATH_LEN] = "petsc_solution_miilu";
     PetscOptionsGetString(NULL, NULL, "-ref_solution", refname, sizeof(refname), NULL);
 
-    int haveFiles = 0;
+    // The matrix, right-hand side and block sizes are required. The
+    // reference solution is optional: without it, the reference is computed
+    // here by solving the same kinetic system with GMRES + BoomerAMG.
+    int haveFiles = 0, haveRef = 0;
     if (my_rank == 0)
+    {
         haveFiles = (access(matname.c_str(), F_OK) == 0 &&
                      access(rhsname.c_str(), F_OK) == 0 &&
-                     access(refname, F_OK) == 0 &&
                      access("petsc_block_sizes.txt", F_OK) == 0);
+        haveRef = (access(refname, F_OK) == 0);
+    }
     MPI_Bcast(&haveFiles, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&haveRef, 1, MPI_INT, 0, MPI_COMM_WORLD);
     if (!haveFiles)
     {
         if (my_rank == 0)
-            cerr << "Missing one of " << matname << ", " << rhsname << ", "
-                 << refname << ", petsc_block_sizes.txt in the current "
-                    "directory (the reference solution is written by testhypre)."
+            cerr << "Missing one of " << matname << ", " << rhsname
+                 << ", petsc_block_sizes.txt in the current directory (they "
+                    "are written by dreami)."
                  << endl;
         dream_finalize();
         MPI_Finalize();
@@ -287,10 +362,11 @@ int main(int argc, char *argv[])
     }
 
     Mat A;
-    Vec b, xref;
+    Vec b, xref = nullptr;
     LoadMat(matname.c_str(), &A);
     LoadVec(rhsname.c_str(), &b);
-    LoadVec(refname, &xref);
+    if (haveRef)
+        LoadVec(refname, &xref);
 
     PetscInt N;
     MatGetSize(A, &N, nullptr);
@@ -335,21 +411,24 @@ int main(int argc, char *argv[])
     // Nk == N: kinetic-only system, no fluid block / coupling
     const bool haveFluid = (Nk < N);
 
+    // The fluid unknowns x_f are only known when a reference solution of the
+    // full system was loaded; otherwise they are taken as zero.
+    const bool useFluid = haveFluid && haveRef;
+
     Mat Akk, Akf = nullptr;
     MatCreateSubMatrix(A, isK, isK, MAT_INITIAL_MATRIX, &Akk);
-    if (haveFluid)
+    if (useFluid)
         MatCreateSubMatrix(A, isK, isF, MAT_INITIAL_MATRIX, &Akf);
 
-    Vec bk, xf, xk_ref;
+    Vec bk, xf = nullptr, xk_ref = nullptr;
     VecGetSubVector(b, isK, &bk);
-    if (haveFluid)
+    if (useFluid)
         VecGetSubVector(xref, isF, &xf);
-    VecGetSubVector(xref, isK, &xk_ref);
 
-    // rhs = b_k - A_kf x_f
+    // rhs = b_k - A_kf x_f   (or b_k alone, see above)
     Vec rhs, x;
     MatCreateVecs(Akk, &x, &rhs);
-    if (haveFluid)
+    if (useFluid)
     {
         MatMult(Akf, xf, rhs);
         VecAYPX(rhs, -1.0, bk);
@@ -362,6 +441,20 @@ int main(int argc, char *argv[])
         cout << "Full system " << N << " x " << N << ", kinetic block "
              << Nk << " x " << Nk << " (Nhot " << Nhot << ", Nre " << Nre
              << "), " << size << " rank" << (size == 1 ? "" : "s") << endl;
+    if (my_rank == 0 && haveFluid && !haveRef)
+        cout << "No reference solution (" << refname << "): the fluid unknowns "
+                                                        "are taken as 0, so the system solved is A_kk x_k = b_k."
+             << endl;
+
+    // Reference kinetic solution: the kinetic part of the loaded full-system
+    // solution, or else a GMRES + BoomerAMG solve of this very system.
+    if (haveRef)
+        VecGetSubVector(xref, isK, &xk_ref);
+    else
+    {
+        VecDuplicate(rhs, &xk_ref);
+        SolveAMGReference(Akk, rhs, xk_ref, my_rank);
+    }
 
     // ---- GMRES + hypre/BoomerAMG on the kinetic block ----
     // -scale none|diag|ruiz   row/column scaling applied before AMG
@@ -397,12 +490,10 @@ int main(int argc, char *argv[])
             {"default", {}},
             {"strong_threshold 0.5", {{P + "strong_threshold", "0.5"}}},
             {"strong_threshold 0.7", {{P + "strong_threshold", "0.7"}}},
-            {"Jacobi w=0.7", {{P + "relax_type_all", "Jacobi"},
-                              {P + "relax_weight_all", "0.7"}}},
+            {"Jacobi w=0.7", {{P + "relax_type_all", "Jacobi"}, {P + "relax_weight_all", "0.7"}}},
             {"l1scaled-Jacobi", {{P + "relax_type_all", "l1scaled-Jacobi"}}},
             {"agg_nl 1", {{P + "agg_nl", "1"}}},
-            {"thr 0.5 + l1scaled-Jacobi", {{P + "strong_threshold", "0.5"},
-                                           {P + "relax_type_all", "l1scaled-Jacobi"}}},
+            {"thr 0.5 + l1scaled-Jacobi", {{P + "strong_threshold", "0.5"}, {P + "relax_type_all", "l1scaled-Jacobi"}}},
         };
         if (my_rank == 0)
             cout << "Sweep (max " << cap << " iterations per run):" << endl;
@@ -412,19 +503,23 @@ int main(int argc, char *argv[])
     }
 
     VecRestoreSubVector(b, isK, &bk);
-    if (haveFluid)
+    if (useFluid)
         VecRestoreSubVector(xref, isF, &xf);
-    VecRestoreSubVector(xref, isK, &xk_ref);
+    if (haveRef)
+        VecRestoreSubVector(xref, isK, &xk_ref);
+    else
+        VecDestroy(&xk_ref);
     VecDestroy(&x);
     VecDestroy(&rhs);
     MatDestroy(&Akk);
-    if (haveFluid)
+    if (useFluid)
         MatDestroy(&Akf);
     ISDestroy(&isK);
     ISDestroy(&isF);
     MatDestroy(&A);
     VecDestroy(&b);
-    VecDestroy(&xref);
+    if (haveRef)
+        VecDestroy(&xref);
 
     dream_finalize();
     MPI_Finalize();
