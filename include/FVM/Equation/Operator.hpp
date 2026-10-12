@@ -63,17 +63,17 @@ namespace DREAM::FVM {
         void Evaluate(real_t*, const real_t*);
         void EvaluableTransform(real_t*);
 
-        // Tell the transient terms which matrix rows this rank owns (see
-        // LinearTransientTerm::SetLocalRange())
+        // Tell the transient and advection-diffusion terms which matrix rows
+        // this rank owns (see EquationTerm::SetLocalRange())
         void SetLocalRange(const PetscInt, const PetscInt, const PetscInt);
 
 		bool HasTransientTerm() const { return this->hasTransientTerm; }
 
         // Same as RebuildTerms(), SetMatrixElements() and SetVectorElements(),
-        // but for the transient terms of the operator only
-        void RebuildTransientTerms(const real_t, const real_t, UnknownQuantityHandler*);
-        void SetMatrixElementsTransientTerms(Matrix*, real_t*);
-        void SetVectorElementsTransientTerms(real_t*, const real_t*);
+        // but for the transient and advection-diffusion terms of the operator only
+        void RebuildTransientAdvectionDiffusionTerms(const real_t, const real_t, UnknownQuantityHandler*);
+        void SetMatrixElementsTransientAdvectionDiffusionTerms(Matrix*, real_t*);
+        void SetVectorElementsTransientAdvectionDiffusionTerms(real_t*, const real_t*);
 
         EquationTerm *GetTermByID(const int_t id) { return this->identifiableTerms[id]; }
 

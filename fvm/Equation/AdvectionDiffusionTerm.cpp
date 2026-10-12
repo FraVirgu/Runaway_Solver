@@ -6,14 +6,14 @@
 #include "FVM/Equation/AdvectionDiffusionTerm.hpp"
 #include "FVM/Equation/TermLog.hpp"
 
-
 using namespace DREAM::FVM;
 using namespace std;
 
 /**
  * Destructor.
  */
-AdvectionDiffusionTerm::~AdvectionDiffusionTerm(){
+AdvectionDiffusionTerm::~AdvectionDiffusionTerm()
+{
     for (auto dif : this->diffusionterms)
         delete dif;
     for (auto adv : this->advectionterms)
@@ -23,7 +23,8 @@ AdvectionDiffusionTerm::~AdvectionDiffusionTerm(){
 /**
  * Add an advection term to this term.
  */
-void AdvectionDiffusionTerm::Add(AdvectionTerm *a) {
+void AdvectionDiffusionTerm::Add(AdvectionTerm *a)
+{
     a->SetCoefficients(this->fr, this->f1, this->f2, this->f1pSqAtZero, this->AdvectionTerm::deltaRadialFlux);
     a->SetInterpolationCoefficients(this->deltar, this->delta1, this->delta2);
     advectionterms.push_back(a);
@@ -32,10 +33,10 @@ void AdvectionDiffusionTerm::Add(AdvectionTerm *a) {
 /**
  * Add a diffusion term to this term.
  */
-void AdvectionDiffusionTerm::Add(DiffusionTerm *d) {
+void AdvectionDiffusionTerm::Add(DiffusionTerm *d)
+{
     d->SetCoefficients(
-        this->drr, this->d11, this->d12, this->d21, this->d22, this->DiffusionTerm::deltaRadialFlux
-    );
+        this->drr, this->d11, this->d12, this->d21, this->d22, this->DiffusionTerm::deltaRadialFlux);
     diffusionterms.push_back(d);
 }
 
@@ -43,7 +44,8 @@ void AdvectionDiffusionTerm::Add(DiffusionTerm *d) {
  * Returns the number of non-zero elements per row
  * inserted by this term into a linear operator matrix.
  */
-len_t AdvectionDiffusionTerm::GetNumberOfNonZerosPerRow() const {
+len_t AdvectionDiffusionTerm::GetNumberOfNonZerosPerRow() const
+{
     len_t nnz = 0;
     for (auto it = advectionterms.begin(); it != advectionterms.end(); it++)
         nnz = max(nnz, (*it)->GetNumberOfNonZerosPerRow());
@@ -56,21 +58,23 @@ len_t AdvectionDiffusionTerm::GetNumberOfNonZerosPerRow() const {
 
 /**
  * Helper function for `GetNumberOfNonZerosPerRow_jac()` which extracts
- * the number of unique nMultiples contributing to the jacobian of the 
- * EquationTerm `term` that are not already accounted for in inVec 
- * 
- *   term: an equation term owned by this AdvectionDiffusionTerm 
+ * the number of unique nMultiples contributing to the jacobian of the
+ * EquationTerm `term` that are not already accounted for in inVec
+ *
+ *   term: an equation term owned by this AdvectionDiffusionTerm
  *  inVec: a vector tracking all derivIds in the AdvectionDiffusionTerm
  *         that contribute to the jacobian block of this Operator
  */
-len_t NumberOfOffdiagonalJacobianNNZToAdd(EquationTerm *term, std::vector<len_t>&inVec) {
-    std::vector<len_t> derivIds   = term->GetDerivIdsJacobian(); // off-diagonal derivIds contributing to term 
+len_t NumberOfOffdiagonalJacobianNNZToAdd(EquationTerm *term, std::vector<len_t> &inVec)
+{
+    std::vector<len_t> derivIds = term->GetDerivIdsJacobian();     // off-diagonal derivIds contributing to term
     std::vector<len_t> nMultiples = term->GetNMultiplesJacobian(); // corresponding nMultiples of the unknown
     len_t nMultToAdd = 0;
     // sum over all derivIds that contribute to the `term` jacobian
-    for(len_t i=0; i<derivIds.size(); i++) 
-        // check if inVec does not already contain the derivId 
-        if(std::find(inVec.begin(), inVec.end(), derivIds[i]) == inVec.end()){
+    for (len_t i = 0; i < derivIds.size(); i++)
+        // check if inVec does not already contain the derivId
+        if (std::find(inVec.begin(), inVec.end(), derivIds[i]) == inVec.end())
+        {
             inVec.push_back(derivIds[i]); // otherwise add it
             nMultToAdd += nMultiples[i];  // and add to length of nMultToAdd
         }
@@ -81,9 +85,10 @@ len_t NumberOfOffdiagonalJacobianNNZToAdd(EquationTerm *term, std::vector<len_t>
  * Returns the number of non-zero elements per row
  * inserted by this term into a jacobian matrix.
  */
-len_t AdvectionDiffusionTerm::GetNumberOfNonZerosPerRow_jac() const {
-    // first add contributions from the `diagonal` jacobian block 
-    len_t nnz = this->GetNumberOfNonZerosPerRow(); 
+len_t AdvectionDiffusionTerm::GetNumberOfNonZerosPerRow_jac() const
+{
+    // first add contributions from the `diagonal` jacobian block
+    len_t nnz = this->GetNumberOfNonZerosPerRow();
 
     // next add off-diagonal contributions to the jacobian:
     std::vector<len_t> derivIdsInJacobian;
@@ -98,12 +103,68 @@ len_t AdvectionDiffusionTerm::GetNumberOfNonZerosPerRow_jac() const {
 
 /**
  * Reset the advection and diffusion coefficients of this term.
+ *
+ * Only the coefficients on the faces of the cells owned by this rank
+ * are reset (see 'EquationTerm::GetLocalRange()'), which are the ones
+ * the advection and diffusion terms rebuild.
  */
-void AdvectionDiffusionTerm::ResetCoefficients() {
-    if (this->advectionterms.size() > 0)
-        this->AdvectionTerm::ResetCoefficients();
-    if (this->diffusionterms.size() > 0)
-        this->DiffusionTerm::ResetCoefficients();
+void AdvectionDiffusionTerm::ResetCoefficients()
+{
+    const bool adv = (this->advectionterms.size() > 0);
+    const bool diff = (this->diffusionterms.size() > 0);
+    const len_t nr = this->AdvectionTerm::nr;
+
+    for (len_t ir = 0; ir < nr; ir++)
+    {
+        // Cells of this radius owned by this rank
+        len_t i1lo, i1hi, i2lo, i2hi;
+        if (!this->AdvectionTerm::GetLocalRange(ir, i1lo, i1hi, i2lo, i2hi))
+            continue;
+
+        const len_t np1 = this->AdvectionTerm::n1[ir];
+
+        // Radial faces (inner and outer face of the cells)
+        // XXX here we assume that all momentum grids are the same
+        for (len_t k = ir; k < ir + 2; k++)
+            for (len_t j = i2lo; j < i2hi; j++)
+                for (len_t i = i1lo; i < i1hi; i++)
+                {
+                    if (adv)
+                        this->fr[k][j * np1 + i] = 0;
+                    if (diff)
+                        this->drr[k][j * np1 + i] = 0;
+                }
+
+        // Faces in the first momentum coordinate
+        for (len_t j = i2lo; j < i2hi; j++)
+        {
+            for (len_t i = i1lo; i < i1hi + 1; i++)
+            {
+                if (adv)
+                    this->f1[ir][j * (np1 + 1) + i] = 0;
+                if (diff)
+                {
+                    this->d11[ir][j * (np1 + 1) + i] = 0;
+                    this->d12[ir][j * (np1 + 1) + i] = 0;
+                }
+            }
+            if (adv)
+                this->f1pSqAtZero[ir][j] = 0;
+        }
+
+        // Faces in the second momentum coordinate
+        for (len_t j = i2lo; j < i2hi + 1; j++)
+            for (len_t i = i1lo; i < i1hi; i++)
+            {
+                if (adv)
+                    this->f2[ir][j * np1 + i] = 0;
+                if (diff)
+                {
+                    this->d22[ir][j * np1 + i] = 0;
+                    this->d21[ir][j * np1 + i] = 0;
+                }
+            }
+    }
 }
 
 /**
@@ -111,7 +172,8 @@ void AdvectionDiffusionTerm::ResetCoefficients() {
  *
  * t: Simulation time to rebuild term for.
  */
-void AdvectionDiffusionTerm::Rebuild(const real_t t, const real_t dt, UnknownQuantityHandler *uqty) {
+void AdvectionDiffusionTerm::Rebuild(const real_t t, const real_t dt, UnknownQuantityHandler *uqty)
+{
     const bool log = TermLog::rebuild();
     TermLog::clk::time_point t0 = TermLog::clk::now();
 
@@ -120,7 +182,8 @@ void AdvectionDiffusionTerm::Rebuild(const real_t t, const real_t dt, UnknownQua
         printf("[rebuild]                 reset coefficients %38s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
 
     // Rebuild advection-diffusion coefficients
-    for (auto it = advectionterms.begin(); it != advectionterms.end(); it++){
+    for (auto it = advectionterms.begin(); it != advectionterms.end(); it++)
+    {
         t0 = TermLog::clk::now();
         (*it)->Rebuild(t, dt, uqty);
         if (log)
@@ -128,7 +191,8 @@ void AdvectionDiffusionTerm::Rebuild(const real_t t, const real_t dt, UnknownQua
                    TermLog::Label(*it).c_str(), TermLog::ms(t0, TermLog::clk::now()));
     }
 
-    for (auto it = diffusionterms.begin(); it != diffusionterms.end(); it++){
+    for (auto it = diffusionterms.begin(); it != diffusionterms.end(); it++)
+    {
         t0 = TermLog::clk::now();
         (*it)->Rebuild(t, dt, uqty);
         if (log)
@@ -137,13 +201,13 @@ void AdvectionDiffusionTerm::Rebuild(const real_t t, const real_t dt, UnknownQua
     }
 
     t0 = TermLog::clk::now();
-    this->AdvectionTerm::RebuildFluxLimiterDamping(t, dt);
+    // this->AdvectionTerm::RebuildFluxLimiterDamping(t, dt);
     if (log)
-        printf("[rebuild]                 flux-limiter damping %36s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
+        printf("[rebuild]      SKIP           flux-limiter damping %36s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
     t0 = TermLog::clk::now();
     this->AdvectionTerm::RebuildInterpolationCoefficients(uqty, this->drr, this->d11, this->d22);
     if (log)
-        printf("[rebuild]                 advection interpolation coefficients (upwind) %17s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
+        printf("[rebuild]            advection interpolation coefficients (upwind) %17s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
 }
 
 /**
@@ -154,12 +218,15 @@ void AdvectionDiffusionTerm::Rebuild(const real_t t, const real_t dt, UnknownQua
  * is filled in one pass for the advection and one for the diffusion. The
  * log lists which terms went into each pass.
  */
-void AdvectionDiffusionTerm::SetMatrixElements(Matrix *mat, real_t *rhs) {
+void AdvectionDiffusionTerm::SetMatrixElements(Matrix *mat, real_t *rhs)
+{
     const bool log = TermLog::matrix();
     TermLog::clk::time_point t0;
 
-    if (this->advectionterms.size() > 0) {
-        if (log) {
+    if (this->advectionterms.size() > 0)
+    {
+        if (log)
+        {
             printf("[matrix]                insert advection (sum of:");
             for (auto it = advectionterms.begin(); it != advectionterms.end(); it++)
                 printf(" %s;", TermLog::Label(*it).c_str());
@@ -170,8 +237,10 @@ void AdvectionDiffusionTerm::SetMatrixElements(Matrix *mat, real_t *rhs) {
         if (log)
             printf("[matrix]                  advection inserted %38s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
     }
-    if (this->diffusionterms.size() > 0) {
-        if (log) {
+    if (this->diffusionterms.size() > 0)
+    {
+        if (log)
+        {
             printf("[matrix]                insert diffusion (sum of:");
             for (auto it = diffusionterms.begin(); it != diffusionterms.end(); it++)
                 printf(" %s;", TermLog::Label(*it).c_str());
@@ -188,17 +257,20 @@ void AdvectionDiffusionTerm::SetMatrixElements(Matrix *mat, real_t *rhs) {
  * Add the combined advection and diffusion terms to the right-hand side
  * (same structure as SetMatrixElements()).
  */
-void AdvectionDiffusionTerm::SetVectorElements(real_t *vec, const real_t *x) {
+void AdvectionDiffusionTerm::SetVectorElements(real_t *vec, const real_t *x)
+{
     const bool log = TermLog::matrix();
     TermLog::clk::time_point t0;
 
-    if (this->advectionterms.size() > 0) {
+    if (this->advectionterms.size() > 0)
+    {
         t0 = TermLog::clk::now();
         this->AdvectionTerm::SetVectorElements(vec, x);
         if (log)
             printf("[matrix]                  advection added to RHS %34s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
     }
-    if (this->diffusionterms.size() > 0) {
+    if (this->diffusionterms.size() > 0)
+    {
         t0 = TermLog::clk::now();
         this->DiffusionTerm::SetVectorElements(vec, x);
         if (log)
@@ -210,13 +282,14 @@ void AdvectionDiffusionTerm::SetVectorElements(real_t *vec, const real_t *x) {
  * Save the advection and diffusion coefficients of this
  * object to the specified file.
  */
-void AdvectionDiffusionTerm::SaveCoefficientsSFile(const string& filename) {
+void AdvectionDiffusionTerm::SaveCoefficientsSFile(const string &filename)
+{
     SFile *sf = SFile::Create(filename, SFILE_MODE_WRITE);
     this->SaveCoefficientsSFile(sf);
     sf->Close();
 }
-void AdvectionDiffusionTerm::SaveCoefficientsSFile(SFile *sf) {
+void AdvectionDiffusionTerm::SaveCoefficientsSFile(SFile *sf)
+{
     this->AdvectionTerm::SaveCoefficientsSFile(sf);
     this->DiffusionTerm::SaveCoefficientsSFile(sf);
 }
-

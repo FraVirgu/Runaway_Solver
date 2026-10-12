@@ -275,7 +275,7 @@ void Solver::BuildMatrix(const real_t, const real_t, FVM::BlockMatrix *mat, real
  * mat:  Matrix to use for storing the jacobian.
  * rhs:  Right-hand-side in equation.
  */
-void Solver::BuildMatrixTransientTerm(const real_t, const real_t, FVM::BlockMatrix *mat, real_t *S)
+void Solver::BuildMatrixTransientAdvectionDiffusion(const real_t, const real_t, FVM::BlockMatrix *mat, real_t *S)
 {
     // Optional log of how the matrix and the RHS are built, with timings:
     //   -dream_log_matrix      log the first call
@@ -332,8 +332,8 @@ void Solver::BuildMatrixTransientTerm(const real_t, const real_t, FVM::BlockMatr
 
         for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
         {
-            // Only the transient terms are inserted here
-            if (!it->second->HasTransientTerm())
+            // Only the transient and advection-diffusion terms are inserted here
+            if (!it->second->HasTransientTerm() && it->second->GetAdvectionDiffusion() == nullptr)
                 continue;
 
             const char *colName = unknowns->GetUnknown(it->first)->GetName().c_str();
@@ -346,14 +346,13 @@ void Solver::BuildMatrixTransientTerm(const real_t, const real_t, FVM::BlockMatr
                 SetElement(5, 7, 1.3)     →  MatSetValue(mat, 6005, 7, 1.3)  (matrix changes here)
                 */
                 mat->SelectSubEquation(matUqnId, utmm[it->first]); //   utmm[it->first] selecting
-                // (element 'i' of the unknown is row vecoffs+i, and the
-                // transient terms only touch the rows of this rank)
+                // (element 'i' of the unknown is row vecoffs+i)
                 PetscInt vecoffs = mat->GetOffset(matUqnId) - rstart;
                 if (log)
-                    printf("[matrix]    block (%s, %s) -> MATRIX (transient terms only)\n",
+                    printf("[matrix]    block (%s, %s) -> MATRIX (transient and advection-diffusion terms only)\n",
                            unknowns->GetUnknown(uqnId)->GetName().c_str(), colName);
                 FVM::TermLog::matrix() = log;
-                it->second->SetMatrixElementsTransientTerms(mat, S + vecoffs);
+                it->second->SetMatrixElementsTransientAdvectionDiffusionTerms(mat, S + vecoffs);
                 FVM::TermLog::matrix() = false;
 
                 // The unknown to which this operator should be applied is a
@@ -372,7 +371,7 @@ void Solver::BuildMatrixTransientTerm(const real_t, const real_t, FVM::BlockMatr
                     printf("[matrix]    block (%s, %s) -> RHS (%s is not in the matrix)\n",
                            unknowns->GetUnknown(uqnId)->GetName().c_str(), colName, colName);
                 FVM::TermLog::matrix() = log;
-                it->second->SetVectorElementsTransientTerms(S + vecoffs, data);
+                it->second->SetVectorElementsTransientAdvectionDiffusionTerms(S + vecoffs, data);
                 FVM::TermLog::matrix() = false;
             }
             else if (log)
@@ -389,7 +388,7 @@ void Solver::BuildMatrixTransientTerm(const real_t, const real_t, FVM::BlockMatr
     if (log)
     {
         printf("[matrix]  final assembly %62s %9.3f ms\n", "", ms(t0, clk::now()));
-        printf("[matrix]  BuildMatrixTransientTerm total %46s %9.3f ms\n", "", ms(tAll, clk::now()));
+        printf("[matrix]  BuildMatrixTransientAdvectionDiffusion total %32s %9.3f ms\n", "", ms(tAll, clk::now()));
     }
 }
 
@@ -660,7 +659,7 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
  * t:  Time for which to rebuild the equation system.
  * dt: Length of time step to take next.
  */
-void Solver::RebuildTermsTransientTerm(const real_t t, const real_t dt)
+void Solver::RebuildTermsTransientAdvectionDiffusion(const real_t t, const real_t dt)
 {
     // Optional log of what is rebuilt, with the time each part takes:
     //   -dream_log_rebuild      log the first call
@@ -788,15 +787,15 @@ void Solver::RebuildTermsTransientTerm(const real_t t, const real_t dt)
 
         for (auto it = eqn->GetOperators().begin(); it != eqn->GetOperators().end(); it++)
         {
-            // Only the transient terms are rebuilt here
-            if (!it->second->HasTransientTerm())
+            // Only the transient and advection-diffusion terms are rebuilt here
+            if (!it->second->HasTransientTerm() && it->second->GetAdvectionDiffusion() == nullptr)
                 continue;
 
             if (log)
-                printf("[rebuild]         operator on %-10s (transient terms only)\n",
+                printf("[rebuild]         operator on %-10s (transient and advection-diffusion terms only)\n",
                        unknowns->GetUnknown(it->first)->GetName().c_str());
 
-            // Tell its transient terms which rows of this equation are ours
+            // Tell these terms which rows of this equation are ours
             FVM::BlockMatrix *bm = this->GetMatrix();
             if (bm != nullptr)
             {
@@ -810,7 +809,7 @@ void Solver::RebuildTermsTransientTerm(const real_t t, const real_t dt)
             // The operator itself prints each of its terms, with timings
             FVM::TermLog::rebuild() = log;
             t0 = clk::now();
-            it->second->RebuildTransientTerms(t, dt, unknowns);
+            it->second->RebuildTransientAdvectionDiffusionTerms(t, dt, unknowns);
             FVM::TermLog::rebuild() = false;
             if (log)
                 printf("[rebuild]           operator total %50s %9.3f ms\n", "", ms(t0, clk::now()));

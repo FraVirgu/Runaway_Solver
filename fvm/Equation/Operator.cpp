@@ -134,7 +134,7 @@ void Operator::AddTerm(TransientTerm *t)
 }
 
 /**
- * Tell the transient terms of this operator which matrix rows are owned
+ * Tell the transient and avection-diffusion terms of this operator which matrix rows are owned
  * by this rank, and where the unknown they act on starts in the matrix.
  *
  * rstart: First matrix row owned by this rank.
@@ -145,16 +145,33 @@ void Operator::SetLocalRange(const PetscInt rstart, const PetscInt rend, const P
 {
     for (auto t : transientTerms)
         t->SetLocalRange(rstart, rend, offset);
+
+    if (adterm == nullptr)
+        return;
+
+    // (the combined term is both an advection and a diffusion term)
+    adterm->AdvectionTerm::SetLocalRange(rstart, rend, offset);
+    adterm->DiffusionTerm::SetLocalRange(rstart, rend, offset);
+
+    for (auto a : adterm->GetAdvectionTerms())
+    {
+        a->SetLocalRange(rstart, rend, offset);
+    }
+
+    for (auto d : adterm->GetDiffusionTerms())
+    {
+        d->SetLocalRange(rstart, rend, offset);
+    }
 }
 
 /**
- * Build the coefficients of the transient terms of this operator only
- * (see 'RebuildTerms()' for all terms).
+ * Build the coefficients of the transient and advection-diffusion terms
+ * of this operator only (see 'RebuildTerms()' for all terms).
  *
  * t:  Time for which to build the operator.
  * dt: Length of time step to take.
  */
-void Operator::RebuildTransientTerms(const real_t t, const real_t dt, UnknownQuantityHandler *uqty)
+void Operator::RebuildTransientAdvectionDiffusionTerms(const real_t t, const real_t dt, UnknownQuantityHandler *uqty)
 {
     const bool log = TermLog::rebuild();
     TermLog::clk::time_point t0;
@@ -167,16 +184,29 @@ void Operator::RebuildTransientTerms(const real_t t, const real_t dt, UnknownQua
             printf("[rebuild]             term (transient)     %-34s %9.3f ms\n",
                    TermLog::Label(term).c_str(), TermLog::ms(t0, TermLog::clk::now()));
     }
+
+    // Advection-diffusion term (logs its own sub-terms)
+    if (adterm != nullptr)
+    {
+        if (log)
+            printf("[rebuild]             term (advection-diffusion), made of:\n");
+        t0 = TermLog::clk::now();
+        adterm->Rebuild(t, dt, uqty);
+        if (log)
+            printf("[rebuild]               advection-diffusion total %37s %9.3f ms\n", "",
+                   TermLog::ms(t0, TermLog::clk::now()));
+    }
 }
 
 /**
- * Set the linear operator matrix elements of the transient terms of this
- * operator only (see 'SetMatrixElements()' for all terms).
+ * Set the linear operator matrix elements of the transient and
+ * advection-diffusion terms of this operator only (see
+ * 'SetMatrixElements()' for all terms).
  *
  * mat: Matrix to set elements of.
  * rhs: Vector representing equation right-hand-side.
  */
-void Operator::SetMatrixElementsTransientTerms(Matrix *mat, real_t *rhs)
+void Operator::SetMatrixElementsTransientAdvectionDiffusionTerms(Matrix *mat, real_t *rhs)
 {
     const bool log = TermLog::matrix();
     TermLog::clk::time_point t0;
@@ -189,16 +219,28 @@ void Operator::SetMatrixElementsTransientTerms(Matrix *mat, real_t *rhs)
             printf("[matrix]              term (transient)     %-34s %9.3f ms\n",
                    TermLog::Label(term).c_str(), TermLog::ms(t0, TermLog::clk::now()));
     }
+
+    // Advection-diffusion term (logs its own sub-terms)
+    if (adterm != nullptr)
+    {
+        if (log)
+            printf("[matrix]              term (advection-diffusion), made of:\n");
+        t0 = TermLog::clk::now();
+        adterm->SetMatrixElements(mat, rhs);
+        if (log)
+            printf("[matrix]                advection-diffusion total %37s %9.3f ms\n", "",
+                   TermLog::ms(t0, TermLog::clk::now()));
+    }
 }
 
 /**
- * Evaluate the transient terms of this operator only (see
- * 'SetVectorElements()' for all terms).
+ * Evaluate the transient and advection-diffusion terms of this operator
+ * only (see 'SetVectorElements()' for all terms).
  *
  * vec: Function vector to assign evaluated operator to.
  * x:   Value of the unknown to evaluate the function for.
  */
-void Operator::SetVectorElementsTransientTerms(real_t *vec, const real_t *x)
+void Operator::SetVectorElementsTransientAdvectionDiffusionTerms(real_t *vec, const real_t *x)
 {
     const bool log = TermLog::matrix();
     TermLog::clk::time_point t0;
@@ -210,6 +252,14 @@ void Operator::SetVectorElementsTransientTerms(real_t *vec, const real_t *x)
         if (log)
             printf("[matrix]              term (transient)     %-34s %9.3f ms\n",
                    TermLog::Label(term).c_str(), TermLog::ms(t0, TermLog::clk::now()));
+    }
+
+    // Advection-diffusion term (logs its own sub-terms)
+    if (adterm != nullptr)
+    {
+        if (log)
+            printf("[matrix]              term (advection-diffusion) to RHS:\n");
+        adterm->SetVectorElements(vec, x);
     }
 }
 

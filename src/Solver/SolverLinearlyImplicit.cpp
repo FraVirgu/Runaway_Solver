@@ -286,14 +286,14 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
             unknowns->RestoreSolution(this->nontrivial_unknowns);
 
         this->timeKeeper->StartTimer(timerRebuild);
-        RebuildTermsTransientTerm(t, dt);
+        RebuildTermsTransientAdvectionDiffusion(t, dt);
         this->timeKeeper->StopTimer(timerRebuild);
 
         real_t *S;
         VecGetArray(petsc_S, &S);
 
         this->timeKeeper->StartTimer(timerMatrix);
-        BuildMatrixTransientTerm(t, dt, matrix, S);
+        BuildMatrixTransientAdvectionDiffusion(t, dt, matrix, S);
         this->timeKeeper->StopTimer(timerMatrix);
 
         // The file name carries the number of MPI ranks of this run
