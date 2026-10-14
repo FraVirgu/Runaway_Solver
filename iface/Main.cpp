@@ -15,6 +15,7 @@
 #include <csignal>
 #if !defined(NDEBUG) && defined(__linux__)
 #include <fenv.h>
+#include <fcntl.h>
 #endif
 
 #include <softlib/SOFTLibException.h>
@@ -173,6 +174,40 @@ char ***construct_fake_args(vector<string> &args, int &argc)
 
 #include "Distribute.hpp"
 
+// Original standard output of this rank, while it is redirected to
+// /dev/null by 'silence_stdout()' (-1 if not redirected)
+static int saved_stdout = -1;
+
+/**
+ * Discard everything this rank writes to standard output from now on,
+ * unless it is rank 0. Every rank runs the whole simulation, so all its
+ * output would otherwise be printed once per rank. Standard error is
+ * not affected.
+ */
+void silence_stdout(const int rank) {
+    if (rank == 0 || saved_stdout != -1)
+        return;
+
+    fflush(stdout);
+    saved_stdout = dup(STDOUT_FILENO);
+    int devnull = open("/dev/null", O_WRONLY);
+    dup2(devnull, STDOUT_FILENO);
+    close(devnull);
+}
+
+/**
+ * Undo 'silence_stdout()', so that this rank can report an error.
+ */
+void restore_stdout() {
+    if (saved_stdout == -1)
+        return;
+
+    fflush(stdout);
+    dup2(saved_stdout, STDOUT_FILENO);
+    close(saved_stdout);
+    saved_stdout = -1;
+}
+
 /**
  * Program entry point.
  *
@@ -234,6 +269,9 @@ int main(int argc, char *argv[])
             DREAM::SettingsSFile::LoadSettings(settings, a->input_filename);
             sim = DREAM::SimulationGenerator::ProcessSettings(settings);
 
+            // From here on, only rank 0 prints
+            silence_stdout(my_rank);
+
             if (a->print_adas)
                 display_adas(sim);
 
@@ -244,24 +282,30 @@ int main(int argc, char *argv[])
         }
         catch (DREAM::QuitException &ex)
         {
+            restore_stdout();
             DREAM::IO::PrintInfo(ex.what());
             exit_code = 0;
         }
         catch (DREAM::FVM::FVMException &ex)
         {
+            restore_stdout();
             DREAM::IO::PrintError(ex.what());
             exit_code = 1;
         }
         catch (SOFTLibException &ex)
         {
+            restore_stdout();
             DREAM::IO::PrintError(ex.what());
             exit_code = 2;
         }
         catch (H5::FileIException &ex)
         {
+            restore_stdout();
             DREAM::IO::PrintError(ex.getDetailMsg().c_str());
             exit_code = 3;
         }
+
+        restore_stdout();
 
         // The simulation owns PETSc objects (matrix, solver), which must be
         // destroyed before PETSc is finalized

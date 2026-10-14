@@ -272,6 +272,17 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
 
     this->timeKeeper->StartTimer(timerTot);
 
+    // Save the matrix and RHS of every iteration to PETSc binary files
+    // (petsc_mat_np<ranks>_step<N>_iter<k>, petsc_rhs_np<ranks>_...)?
+    //   -dream_save_system
+    static PetscBool saveSystem = PETSC_FALSE;
+    static bool saveSystemRead = false;
+    if (!saveSystemRead)
+    {
+        PetscOptionsHasName(NULL, NULL, "-dream_save_system", &saveSystem);
+        saveSystemRead = true;
+    }
+
     bool extiter_conv = true;
     len_t iter = 0;
     do
@@ -299,9 +310,10 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         // The file name carries the number of MPI ranks of this run
         PetscMPIInt nRanks;
         MPI_Comm_size(PETSC_COMM_WORLD, &nRanks);
-        matrix->View(
-            FVM::Matrix::BINARY_MATLAB,
-            "petsc_mat_np" + std::to_string(nRanks) + "_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter));
+        if (saveSystem)
+            matrix->View(
+                FVM::Matrix::BINARY_MATLAB,
+                "petsc_mat_np" + std::to_string(nRanks) + "_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter));
 
         /*
            Negate vector
@@ -328,6 +340,7 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         VecRestoreArray(petsc_S, &S);
 
         // Saved under the same name as the matrix above
+        if (saveSystem)
         {
             PetscViewer rhsViewer;
             std::string rhsname = "petsc_rhs_np" + std::to_string(nRanks) + "_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter);

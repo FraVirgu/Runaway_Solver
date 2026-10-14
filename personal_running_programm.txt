@@ -40,3 +40,12 @@ PETSC_OPTIONS=" -dream_kinetic_only -dream_log_rebuild 3  -dream_log_matrix -dre
 
 
  unset LD_LIBRARY_PATH
+
+
+
+
+# save the matrix and RHS of every step
+PETSC_OPTIONS="-dream_kinetic_only -dream_save_system" mpirun -n 3 ./dreami ./dream_settings_paper.h5
+
+# no matrix/RHS files (use this for timing)
+PETSC_OPTIONS="-dream_kinetic_only" mpirun -n 3 ./dreami ./dream_settings_paper.h5
