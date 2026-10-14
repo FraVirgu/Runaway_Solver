@@ -158,7 +158,7 @@ set(dream_settings
     "${PROJECT_SOURCE_DIR}/src/Settings/Equations/distribution.cpp"
     "${PROJECT_SOURCE_DIR}/src/Settings/Equations/E_field.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Settings/Equations/f_hot.cpp"
-    "${PROJECT_SOURCE_DIR}/src/Settings/Equations/f_re.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Settings/Equations/f_re.cpp"
     "${PROJECT_SOURCE_DIR}/src/Settings/Equations/ions.cpp"
     "${PROJECT_SOURCE_DIR}/src/Settings/Equations/ions_abl.cpp"
     "${PROJECT_SOURCE_DIR}/src/Settings/Equations/j_bs.cpp"

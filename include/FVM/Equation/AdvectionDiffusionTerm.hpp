@@ -28,6 +28,7 @@ namespace DREAM::FVM {
 
         virtual void Rebuild(const real_t, const real_t, UnknownQuantityHandler*) override;
         virtual void ResetCoefficients() override;
+        void GatherUpperBoundaryCoefficients();
 
         const std::vector<AdvectionTerm*>& GetAdvectionTerms() const { return advectionterms; }
         const std::vector<DiffusionTerm*>& GetDiffusionTerms() const { return diffusionterms; }

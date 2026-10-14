@@ -349,7 +349,7 @@ void Solver::BuildMatrixTransientAdvectionDiffusion(const real_t, const real_t, 
                 // (element 'i' of the unknown is row vecoffs+i)
                 PetscInt vecoffs = mat->GetOffset(matUqnId) - rstart;
                 if (log)
-                    printf("[matrix]    block (%s, %s) -> MATRIX (transient and advection-diffusion terms only)\n",
+                    printf("[matrix]    block (%s, %s) -> MATRIX (transient, advection-diffusion and boundary conditions only)\n",
                            unknowns->GetUnknown(uqnId)->GetName().c_str(), colName);
                 FVM::TermLog::matrix() = log;
                 it->second->SetMatrixElementsTransientAdvectionDiffusionTerms(mat, S + vecoffs);
@@ -792,7 +792,7 @@ void Solver::RebuildTermsTransientAdvectionDiffusion(const real_t t, const real_
                 continue;
 
             if (log)
-                printf("[rebuild]         operator on %-10s (transient and advection-diffusion terms only)\n",
+                printf("[rebuild]         operator on %-10s (transient, advection-diffusion and boundary conditions only)\n",
                        unknowns->GetUnknown(it->first)->GetName().c_str());
 
             // Tell these terms which rows of this equation are ours

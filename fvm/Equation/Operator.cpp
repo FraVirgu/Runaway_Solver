@@ -166,7 +166,8 @@ void Operator::SetLocalRange(const PetscInt rstart, const PetscInt rend, const P
 
 /**
  * Build the coefficients of the transient and advection-diffusion terms
- * of this operator only (see 'RebuildTerms()' for all terms).
+ * and the boundary conditions of this operator only (see 'RebuildTerms()'
+ * for all terms).
  *
  * t:  Time for which to build the operator.
  * dt: Length of time step to take.
@@ -195,13 +196,29 @@ void Operator::RebuildTransientAdvectionDiffusionTerms(const real_t t, const rea
         if (log)
             printf("[rebuild]               advection-diffusion total %37s %9.3f ms\n", "",
                    TermLog::ms(t0, TermLog::clk::now()));
+
+        t0 = TermLog::clk::now();
+        adterm->GatherUpperBoundaryCoefficients();
+        if (log)
+            printf("[rebuild]           Allreduce of advection-diffusion total %37s %9.3f ms\n", "",
+                   TermLog::ms(t0, TermLog::clk::now()));
+    }
+
+    // Boundary conditions
+    for (auto it = boundaryConditions.begin(); it != boundaryConditions.end(); it++)
+    {
+        t0 = TermLog::clk::now();
+        (*it)->Rebuild(t, uqty);
+        if (log)
+            printf("[rebuild]             boundary condition   %-34s %9.3f ms\n",
+                   TermLog::ClassLabel(*it).c_str(), TermLog::ms(t0, TermLog::clk::now()));
     }
 }
 
 /**
  * Set the linear operator matrix elements of the transient and
- * advection-diffusion terms of this operator only (see
- * 'SetMatrixElements()' for all terms).
+ * advection-diffusion terms and the boundary conditions of this operator
+ * only (see 'SetMatrixElements()' for all terms).
  *
  * mat: Matrix to set elements of.
  * rhs: Vector representing equation right-hand-side.
@@ -231,6 +248,39 @@ void Operator::SetMatrixElementsTransientAdvectionDiffusionTerms(Matrix *mat, re
             printf("[matrix]                advection-diffusion total %37s %9.3f ms\n", "",
                    TermLog::ms(t0, TermLog::clk::now()));
     }
+
+    // Boundary conditions (as in 'SetMatrixElements()')
+    if (boundaryConditions.empty())
+        return;
+
+    for (auto it = boundaryConditions.begin(); it != boundaryConditions.end(); it++)
+    {
+        t0 = TermLog::clk::now();
+        (*it)->AddToMatrixElements(mat, rhs);
+        if (log)
+            printf("[matrix]              boundary condition   %-34s (add to matrix) %9.3f ms\n",
+                   TermLog::ClassLabel(*it).c_str(), TermLog::ms(t0, TermLog::clk::now()));
+    }
+
+    t0 = TermLog::clk::now();
+    mat->PartialAssemble();
+    if (log)
+        printf("[matrix]              partial assembly %43s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
+
+    // Hard set boundary conditions
+    for (auto it = boundaryConditions.begin(); it != boundaryConditions.end(); it++)
+    {
+        t0 = TermLog::clk::now();
+        (*it)->SetMatrixElements(mat, rhs);
+        if (log)
+            printf("[matrix]              boundary condition   %-34s (hard set)      %9.3f ms\n",
+                   TermLog::ClassLabel(*it).c_str(), TermLog::ms(t0, TermLog::clk::now()));
+    }
+
+    t0 = TermLog::clk::now();
+    mat->PartialAssemble();
+    if (log)
+        printf("[matrix]              partial assembly %43s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
 }
 
 /**
@@ -487,6 +537,14 @@ void Operator::RebuildTerms(const real_t t, const real_t dt, UnknownQuantityHand
         adterm->Rebuild(t, dt, uqty);
         if (log)
             printf("[rebuild]               advection-diffusion total %37s %9.3f ms\n", "",
+                   TermLog::ms(t0, TermLog::clk::now()));
+
+        // The boundary condition between two momentum grids needs the
+        // coefficients on the upper p boundary of every xi line
+        t0 = TermLog::clk::now();
+        adterm->GatherUpperBoundaryCoefficients();
+        if (log)
+            printf("[rebuild]               gather upper p boundary coefficients %26s %9.3f ms\n", "",
                    TermLog::ms(t0, TermLog::clk::now()));
     }
 

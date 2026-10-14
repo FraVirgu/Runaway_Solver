@@ -337,24 +337,24 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         }
 
         // // Scale the matrix and RHS (if -dream_scale is set)
-        // this->Scale(matrix, petsc_S);
+        this->Scale(matrix, petsc_S);
 
-        // auto start = std::chrono::steady_clock::now();
-        // this->timeKeeper->StartTimer(timerInvert);
-        // inverter->Invert(matrix, &petsc_S, &petsc_S);
-        // this->timeKeeper->StopTimer(timerInvert);
+        auto start = std::chrono::steady_clock::now();
+        this->timeKeeper->StartTimer(timerInvert);
+        inverter->Invert(matrix, &petsc_S, &petsc_S);
+        this->timeKeeper->StopTimer(timerInvert);
 
-        // if (this->nTimeStep == 1)
-        // {
-        //     auto end = std::chrono::steady_clock::now();
-        //     cout << "iter_0:time " << std::chrono::duration<double>(end - start).count() << " s" << endl;
-        // }
+        if (this->nTimeStep == 1)
+        {
+            auto end = std::chrono::steady_clock::now();
+            cout << "iter_0:time " << std::chrono::duration<double>(end - start).count() << " s" << endl;
+        }
 
-        // // Undo the scaling on the solution
-        // this->Unscale(petsc_S);
+        // Undo the scaling on the solution
+        this->Unscale(petsc_S);
 
         // // Store solution
-        // unknowns->Store(this->nontrivial_unknowns, petsc_S);
+        unknowns->Store(this->nontrivial_unknowns, petsc_S);
 
         // // Call external iterator (if enabled)
         // if (this->extiter != nullptr)
@@ -367,8 +367,11 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
     // saved twice: under the name of the matrix and RHS saved above, so that
     // the three can be loaded together, and as 'petsc_solution_final_step',
     // which is overwritten on every time step.
+    // (The file name carries the number of MPI ranks of this run.)
+    PetscMPIInt nRanksSol;
+    MPI_Comm_size(PETSC_COMM_WORLD, &nRanksSol);
     for (const std::string &solname :
-         {"petsc_solution_serial_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter),
+         {"petsc_solution_np" + std::to_string(nRanksSol) + "_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter),
           std::string("petsc_solution_final_step")})
     {
         PetscViewer solViewer;

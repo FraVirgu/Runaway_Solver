@@ -353,139 +353,53 @@ void EquationSystem::Solve()
     Timer tim;
     len_t istep = 0; // Number of times 'solver->Solve()' has been called...
 
-    // while (!timestepper->IsFinished())
-    // {
-    //     // Take step
-    //     real_t tNext = timestepper->NextTime();
-    //     this->currentTime = timestepper->CurrentTime();
-    //     real_t dt = tNext - this->currentTime;
-
-    //     this->fluidGrid->Rebuild(tNext);
-
-    //     try
-    //     {
-    //         istep++;
-    //         solver->Solve(tNext, dt);
-
-    //         timestepper->ValidateStep();
-
-    //         // Post-process solution (should be done before saving any
-    //         // time step)
-    //         this->postProcessor->Process(tNext);
-
-    //         if (timestepper->IsSaveStep())
-    //         {
-    //             this->TimestepFinished();
-
-    //             // true = Really save the step (if it's false, we just
-    //             // indicate that we have taken another timestep). This
-    //             // should only be true for time steps which we want to
-    //             // push to the output file.
-    //             unknowns.SaveStep(tNext, true);
-    //             this->times.push_back(tNext);
-
-    //             otherQuantityHandler->StoreAll(tNext);
-    //         }
-    //         else
-    //             unknowns.SaveStep(tNext, false);
-
-    //         timestepper->PrintProgress();
-    //     }
-    //     catch (DREAM::QuitException &ex)
-    //     {
-    //         // Rethrow quit exception
-    //         throw ex;
-    //     }
-    //     catch (FVM::FVMException &ex)
-    //     {
-    //         timestepper->HandleException(ex);
-    //     }
-    // }
-
-    // FIRST ITERATION IS FOR SET UP Does not count in the metrics
-    try
+    while (!timestepper->IsFinished())
     {
+        // Take step
         real_t tNext = timestepper->NextTime();
         this->currentTime = timestepper->CurrentTime();
         real_t dt = tNext - this->currentTime;
-        istep++;
-        solver->Solve(tNext, dt);
 
-        timestepper->ValidateStep();
+        this->fluidGrid->Rebuild(tNext);
 
-        // Post-process solution (should be done before saving any
-        // time step)
-        this->postProcessor->Process(tNext);
-
-        if (timestepper->IsSaveStep())
+        try
         {
-            this->TimestepFinished();
+            istep++;
+            solver->Solve(tNext, dt);
 
-            // true = Really save the step (if it's false, we just
-            // indicate that we have taken another timestep). This
-            // should only be true for time steps which we want to
-            // push to the output file.
-            unknowns.SaveStep(tNext, true);
-            this->times.push_back(tNext);
+            timestepper->ValidateStep();
 
-            otherQuantityHandler->StoreAll(tNext);
+            // Post-process solution (should be done before saving any
+            // time step)
+            this->postProcessor->Process(tNext);
+
+            if (timestepper->IsSaveStep())
+            {
+                this->TimestepFinished();
+
+                // true = Really save the step (if it's false, we just
+                // indicate that we have taken another timestep). This
+                // should only be true for time steps which we want to
+                // push to the output file.
+                unknowns.SaveStep(tNext, true);
+                this->times.push_back(tNext);
+
+                otherQuantityHandler->StoreAll(tNext);
+            }
+            else
+                unknowns.SaveStep(tNext, false);
+
+            timestepper->PrintProgress();
         }
-        else
-            unknowns.SaveStep(tNext, false);
-
-        timestepper->PrintProgress();
-    }
-    catch (DREAM::QuitException &ex)
-    {
-        // Rethrow quit exception
-        throw ex;
-    }
-    catch (FVM::FVMException &ex)
-    {
-        timestepper->HandleException(ex);
-    }
-
-    // SECOND ITERATION IS FOR metrics
-    try
-    {
-        real_t tNext = timestepper->NextTime();
-        this->currentTime = timestepper->CurrentTime();
-        real_t dt = tNext - this->currentTime;
-        istep++;
-        solver->Solve(tNext, dt);
-
-        timestepper->ValidateStep();
-
-        // Post-process solution (should be done before saving any
-        // time step)
-        this->postProcessor->Process(tNext);
-
-        if (timestepper->IsSaveStep())
+        catch (DREAM::QuitException &ex)
         {
-            this->TimestepFinished();
-
-            // true = Really save the step (if it's false, we just
-            // indicate that we have taken another timestep). This
-            // should only be true for time steps which we want to
-            // push to the output file.
-            unknowns.SaveStep(tNext, true);
-            this->times.push_back(tNext);
-
-            otherQuantityHandler->StoreAll(tNext);
+            // Rethrow quit exception
+            throw ex;
         }
-        else
-            unknowns.SaveStep(tNext, false);
-
-        timestepper->PrintProgress();
-    }
-    catch (DREAM::QuitException &ex)
-    {
-        // Rethrow quit exception
-        throw ex;
-    }
-    catch (FVM::FVMException &ex)
-    {
-        timestepper->HandleException(ex);
+        catch (FVM::FVMException &ex)
+        {
+            timestepper->HandleException(ex);
+        }
     }
 
     cout << endl;
