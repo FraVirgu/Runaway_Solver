@@ -184,7 +184,8 @@ static int saved_stdout = -1;
  * output would otherwise be printed once per rank. Standard error is
  * not affected.
  */
-void silence_stdout(const int rank) {
+void silence_stdout(const int rank)
+{
     if (rank == 0 || saved_stdout != -1)
         return;
 
@@ -198,7 +199,8 @@ void silence_stdout(const int rank) {
 /**
  * Undo 'silence_stdout()', so that this rank can report an error.
  */
-void restore_stdout() {
+void restore_stdout()
+{
     if (saved_stdout == -1)
         return;
 
@@ -264,11 +266,11 @@ int main(int argc, char *argv[])
 
         try
         {
-
+            printf("ciao");
             DREAM::Settings *settings = DREAM::SimulationGenerator::CreateSettings();
             DREAM::SettingsSFile::LoadSettings(settings, a->input_filename);
             sim = DREAM::SimulationGenerator::ProcessSettings(settings);
-
+            printf("ciao");
             // From here on, only rank 0 prints
             silence_stdout(my_rank);
 

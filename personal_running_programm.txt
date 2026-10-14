@@ -48,4 +48,8 @@ PETSC_OPTIONS=" -dream_kinetic_only -dream_log_rebuild 3  -dream_log_matrix -dre
 PETSC_OPTIONS="-dream_kinetic_only -dream_save_system" mpirun -n 3 ./dreami ./dream_settings_paper.h5
 
 # no matrix/RHS files (use this for timing)
-PETSC_OPTIONS="-dream_kinetic_only" mpirun -n 3 ./dreami ./dream_settings_paper.h5
+PETSC_OPTIONS="-dream_kinetic_only -dream_scale diag" mpirun -n 3 ./dreami ./dream_settings_paper.h5
+
+
+export DREAM_ROOT=/pitagora/home/userexternal/fvirgult/DREAM
+python basic_kinetic_only.py
