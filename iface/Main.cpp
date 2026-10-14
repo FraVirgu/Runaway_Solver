@@ -7,6 +7,7 @@
 #include <iostream>
 #include <H5Cpp.h>
 #include <string>
+#include <fcntl.h>
 #include <unistd.h>
 
 // If "not debugging" is defined, then we're in
@@ -15,7 +16,6 @@
 #include <csignal>
 #if !defined(NDEBUG) && defined(__linux__)
 #include <fenv.h>
-#include <fcntl.h>
 #endif
 
 #include <softlib/SOFTLibException.h>
