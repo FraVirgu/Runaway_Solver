@@ -71,22 +71,30 @@ EquationSystem *SimulationGenerator::ConstructEquationSystem(
     enum OptionConstants::momentumgrid_type re_type, FVM::Grid *runawayGrid,
     ADAS *adas, NIST *nist, AMJUEL *amjuel)
 {
+    fprintf(stderr, "[eqsys] start\n");
     EquationSystem *eqsys = new EquationSystem(scalarGrid, fluidGrid, ht_type, hottailGrid, re_type, runawayGrid, s);
+    fprintf(stderr, "[eqsys] EquationSystem object\n");
     struct OtherQuantityHandler::eqn_terms *oqty_terms = new OtherQuantityHandler::eqn_terms;
+    fprintf(stderr, "[eqsys] eqn_terms\n");
 
     // Timing information
     eqsys->SetTiming(s->GetBool("output/timingstdout"), s->GetBool("output/timingfile"));
+    fprintf(stderr, "[eqsys] timing\n");
 
     // Initialize from previous simulation output?
     const real_t t0 = ConstructInitializer(eqsys, s);
+    fprintf(stderr, "[eqsys] initializer\n");
     // Construct unknowns
     ConstructUnknowns(eqsys, s, scalarGrid, fluidGrid, hottailGrid, runawayGrid);
+    fprintf(stderr, "[eqsys] unknowns\n");
 
     // Construct equations according to settings
     ConstructEquations(eqsys, s, adas, nist, amjuel, oqty_terms);
+    fprintf(stderr, "[eqsys] equations\n");
 
     // Construct the "other" quantity handler
     ConstructOtherQuantityHandler(eqsys, s, oqty_terms);
+    fprintf(stderr, "[eqsys] other quantity handler\n");
 
     // Figure out which unknowns must be part of the matrix,
     // and set initial values for those quantities which don't
