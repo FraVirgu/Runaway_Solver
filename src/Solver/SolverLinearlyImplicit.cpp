@@ -376,21 +376,24 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         extiter_conv = true;
     } while (!extiter_conv);
 
-    // petsc_S now holds the (unscaled) solution of this time step. It is
-    // saved twice: under the name of the matrix and RHS saved above, so that
-    // the three can be loaded together, and as 'petsc_solution_final_step',
-    // which is overwritten on every time step.
+    // petsc_S now holds the (unscaled) solution of this time step. With
+    // -dream_save_system it is saved twice: under the name of the matrix and
+    // RHS saved above, so that the three can be loaded together, and as
+    // 'petsc_solution_final_step', which is overwritten on every time step.
     // (The file name carries the number of MPI ranks of this run.)
-    PetscMPIInt nRanksSol;
-    MPI_Comm_size(PETSC_COMM_WORLD, &nRanksSol);
-    for (const std::string &solname :
-         {"petsc_solution_np" + std::to_string(nRanksSol) + "_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter),
-          std::string("petsc_solution_final_step")})
+    if (saveSystem)
     {
-        PetscViewer solViewer;
-        PetscViewerBinaryOpen(PETSC_COMM_WORLD, solname.c_str(), FILE_MODE_WRITE, &solViewer);
-        VecView(petsc_S, solViewer);
-        PetscViewerDestroy(&solViewer);
+        PetscMPIInt nRanksSol;
+        MPI_Comm_size(PETSC_COMM_WORLD, &nRanksSol);
+        for (const std::string &solname :
+             {"petsc_solution_np" + std::to_string(nRanksSol) + "_step" + std::to_string(this->nTimeStep) + "_iter" + std::to_string(iter),
+              std::string("petsc_solution_final_step")})
+        {
+            PetscViewer solViewer;
+            PetscViewerBinaryOpen(PETSC_COMM_WORLD, solname.c_str(), FILE_MODE_WRITE, &solViewer);
+            VecView(petsc_S, solViewer);
+            PetscViewerDestroy(&solViewer);
+        }
     }
 
     if (this->extiter)
