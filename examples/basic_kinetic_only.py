@@ -125,7 +125,7 @@ E = E_NORM * E_c
 # anisotropic ... increasingly aggravated for higher electron energies"
 # (Sec. 1) and an under-resolved pitch direction would flatter the
 # iteration counts.
-Np   = 1500
+Np   = 3000
 Nxi  = 100
 Nr   = 1
 
