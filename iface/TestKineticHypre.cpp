@@ -214,11 +214,14 @@ static PetscInt SolveConfig(Mat A0, Vec rhs0, Vec xk_ref, Scale mode,
     PetscReal relErr = refNorm > 0 ? errNorm / refNorm : errNorm;
 
     if (my_rank == 0)
+    {
         printf("%-12s %-34s its %5d  %-9s setup %7.3f s  solve %8.3f s  "
                "res %.2e  err %.2e\n",
                ScaleName(mode), label.c_str(), (int)its,
                reason > 0 ? "converged" : "DIVERGED", tSetup, tSolve,
                (double)relRes, (double)relErr);
+        fflush(stdout); // stdout is a file in batch jobs: write the line now
+    }
 
     for (auto &o : opts)
         PetscOptionsClearValue(NULL, o.first.c_str());
@@ -283,8 +286,11 @@ static void SolveAMGReference(Mat A0, Vec b, Vec x, int my_rank)
     KSPGetIterationNumber(ksp, &its);
     KSPGetConvergedReason(ksp, &reason);
     if (my_rank == 0)
+    {
         printf("reference (GMRES + BoomerAMG, diag scaling, rtol 1e-12): its %d, %s, %.3f s\n",
                (int)its, reason > 0 ? "converged" : "DIVERGED", elapsed);
+        fflush(stdout);
+    }
 
     VecPointwiseMult(x, R, y); // x = R y
     KSPDestroy(&ksp);
