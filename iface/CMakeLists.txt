@@ -39,6 +39,13 @@ add_executable(testkinetichypreradius
 target_link_libraries(testkinetichypreradius PUBLIC dream)
 set_target_properties(testkinetichypreradius PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 
+# Previous version of the radius test (one block per radius, no ASM scan)
+add_executable(oldtestkinetichypreradius
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/iface/old_testKineticHypreRadius.cpp"
+)
+target_link_libraries(oldtestkinetichypreradius PUBLIC dream)
+set_target_properties(oldtestkinetichypreradius PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+
 #if (INTERPROC_OPTIM AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
 #    include(CheckIPOSupported)
 #    # Clang does not support IPO (although Clang++ does), so we need

@@ -193,13 +193,36 @@ static void Report(Mat A0, Vec b, Vec x, Vec x_ref, Scale mode, const string &la
     }
 }
 
-/**
- * Solve A0 x = rhs0 with GMRES + BoomerAMG after scaling (A' = L A0 R,
- * rhs' = L rhs0, x = R x'). Prints one result line. Returns the iteration
- * count.
+/* ====================================================================
+ * Additions to TestKineticHypreRadius.cpp
+ *
+ *   1. SolveAMG          -- gains a `tuned` flag: parallel-friendly
+ *                           BoomerAMG settings, so the monolithic
+ *                           baseline is not handicapped by the defaults.
+ *   2. SolveRadialBlockJacobi -- gains `radiiPerBlock`, so the number of
+ *                           subdomains can be varied without changing Nr.
+ *   3. SolveRadialASM    -- NEW. Additive Schwarz over the radius with an
+ *                           explicit overlap of `ov` radii on each side.
+ *   4. main()            -- loops over the block count and runs all three.
+ *
+ * The point of (2) and (4) is the subdomain-count scan: one-level Schwarz
+ * has kappa ~ C/(H*delta), so the iteration count is expected to grow with
+ * the number of subdomains. radiiPerBlock = Nr is the exact solve;
+ * radiiPerBlock = 1 is the finest decomposition. If the count is flat
+ * across that range, the radial coupling is genuinely negligible and no
+ * coarse space is needed -- which is the claim worth making.
+ * ==================================================================== */
+
+static void CreateRadiusPermutation(PetscInt Nhot, PetscInt Nr, PetscInt nh,
+                                    PetscInt nre, int my_rank, int size,
+                                    IS *isPerm, PetscInt *nlocalRadii);
+
+/* ---------------------------------------------------------------- 1 --
+ * GMRES + BoomerAMG on the whole kinetic block; tuned = true uses the
+ * parallel-friendly settings below instead of the BoomerAMG defaults.
  */
 static PetscInt SolveAMG(Mat A0, Vec rhs0, Vec xk_ref, Scale mode,
-                         PetscInt maxits, int my_rank)
+                         bool tuned, PetscInt maxits, int my_rank)
 {
     Mat As;
     Vec L, R, rhs, y, x;
@@ -217,6 +240,23 @@ static PetscInt SolveAMG(Mat A0, Vec rhs0, Vec xk_ref, Scale mode,
     KSP ksp;
     PC pc;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
+    if (tuned)
+    {
+        // Own prefix, so these settings do not leak into the other solves.
+        KSPSetOptionsPrefix(ksp, "amgtuned_");
+
+        // The BoomerAMG defaults (Falgout coarsening, classical
+        // interpolation, unbounded stencil) are known to produce dense
+        // coarse grids in parallel, which is the usual cause of a setup
+        // time that grows with the rank count. HMIS + ext+i + P_max is the
+        // standard remedy and is what any referee will ask to see before
+        // accepting a comparison against "AMG".
+        PetscOptionsSetValue(NULL, "-amgtuned_pc_hypre_boomeramg_coarsen_type", "HMIS");
+        PetscOptionsSetValue(NULL, "-amgtuned_pc_hypre_boomeramg_interp_type", "ext+i");
+        PetscOptionsSetValue(NULL, "-amgtuned_pc_hypre_boomeramg_P_max", "4");
+        PetscOptionsSetValue(NULL, "-amgtuned_pc_hypre_boomeramg_agg_nl", "1");
+        PetscOptionsSetValue(NULL, "-amgtuned_pc_hypre_boomeramg_truncfactor", "0.3");
+    }
     KSPSetOperators(ksp, As, As);
     KSPSetType(ksp, KSPGMRES);
     KSPGMRESSetRestart(ksp, 100);
@@ -244,11 +284,155 @@ static PetscInt SolveAMG(Mat A0, Vec rhs0, Vec xk_ref, Scale mode,
     KSPGetIterationNumber(ksp, &its);
     KSPGetConvergedReason(ksp, &reason);
 
-    VecPointwiseMult(x, R, y); // x = R y
-    Report(A0, rhs0, x, xk_ref, mode, "GMRES + AMG", its, reason, tSetup, tSolve, my_rank);
+    VecPointwiseMult(x, R, y);
+    Report(A0, rhs0, x, xk_ref, mode,
+           tuned ? "GMRES + AMG (HMIS/ext+i)" : "GMRES + AMG (defaults)",
+           its, reason, tSetup, tSolve, my_rank);
 
     KSPDestroy(&ksp);
     MatDestroy(&As);
+    VecDestroy(&y);
+    VecDestroy(&rhs);
+    VecDestroy(&L);
+    VecDestroy(&R);
+    VecDestroy(&x);
+    return its;
+}
+
+/* ---------------------------------------------------------------- 3 --
+ * NEW: additive Schwarz over the radius.
+ *
+ * Subdomains are groups of `radiiPerBlock` consecutive radii, each extended
+ * by `ov` radii on either side. The overlap is built explicitly rather than
+ * through PCASMSetOverlap because the radial coupling is DIAGONAL: every
+ * row of a radial slab has a neighbour in the adjacent slab, so one level
+ * of graph overlap pulls in the whole adjacent slab anyway. Building it by
+ * hand makes the cost explicit -- with radiiPerBlock = 1 and ov = 1 each
+ * sub-solve is 3x the size of the block-Jacobi one.
+ *
+ * is_local[] (the non-overlapping blocks) is supplied so that PCASM uses
+ * restricted additive Schwarz (Cai & Sarkis), which converges better than
+ * plain ASM at the same cost and is PETSc's default type.
+ */
+static PetscInt SolveRadialASM(Mat A0, Vec rhs0, Vec xk_ref, PetscInt Nhot,
+                               PetscInt Nr, PetscInt nh, PetscInt nre,
+                               Scale mode, PetscInt radiiPerBlock, PetscInt ov,
+                               PetscInt maxits, int my_rank, int size)
+{
+    Mat As, Ap;
+    Vec L, R, rhs, y, x, rhsP, yP;
+    MatDuplicate(A0, MAT_COPY_VALUES, &As);
+    MatCreateVecs(A0, &y, &rhs);
+    VecDuplicate(rhs, &L);
+    VecDuplicate(rhs, &R);
+    VecDuplicate(rhs, &x);
+
+    BuildScaling(A0, mode, L, R);
+    MatDiagonalScale(As, L, R);
+    VecPointwiseMult(rhs, L, rhs0);
+
+    IS isPerm;
+    PetscInt nlocal;
+    CreateRadiusPermutation(Nhot, Nr, nh, nre, my_rank, size, &isPerm, &nlocal);
+    MatCreateSubMatrix(As, isPerm, isPerm, MAT_INITIAL_MATRIX, &Ap);
+    MatCreateVecs(Ap, &yP, &rhsP);
+
+    VecScatter sc;
+    VecScatterCreate(rhs, isPerm, rhsP, NULL, &sc);
+    VecScatterBegin(sc, rhs, rhsP, INSERT_VALUES, SCATTER_FORWARD);
+    VecScatterEnd(sc, rhs, rhsP, INSERT_VALUES, SCATTER_FORWARD);
+    VecSet(yP, 0.0);
+
+    // After the permutation the global row of (radius ir, local index j) is
+    // ir*nb + j, because CreateRadiusPermutation hands out contiguous,
+    // increasing radii in rank order.
+    const PetscInt nb = nh + nre;
+    const PetscInt r0 = (PetscInt)my_rank * Nr / size;
+    // When Nr is not a multiple of the rank count, the last block of a
+    // rank takes the radii left over
+    const PetscInt nblk = max(nlocal / radiiPerBlock, (PetscInt)1);
+
+    vector<IS> sub(nblk), subLocal(nblk);
+    for (PetscInt k = 0; k < nblk; k++)
+    {
+        const PetscInt a = r0 + k * radiiPerBlock; // first radius of block
+        const PetscInt b = (k == nblk - 1) ? r0 + nlocal - 1
+                                           : a + radiiPerBlock - 1; // last radius of block
+        const PetscInt lo = max(a - ov, (PetscInt)0);
+        const PetscInt hi = min(b + ov, Nr - 1);
+
+        ISCreateStride(PETSC_COMM_SELF, (hi - lo + 1) * nb, lo * nb, 1, &sub[k]);
+        ISCreateStride(PETSC_COMM_SELF, (b - a + 1) * nb, a * nb, 1, &subLocal[k]);
+    }
+
+    KSP ksp;
+    PC pc;
+    KSPCreate(PETSC_COMM_WORLD, &ksp);
+    KSPSetOptionsPrefix(ksp, "radasm_");
+    KSPSetOperators(ksp, Ap, Ap);
+    KSPSetType(ksp, KSPGMRES);
+    KSPGMRESSetRestart(ksp, 100);
+    KSPSetTolerances(ksp, 1e-10, PETSC_DEFAULT, PETSC_DEFAULT, maxits);
+    KSPSetInitialGuessNonzero(ksp, PETSC_FALSE);
+    KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
+    KSPGetPC(ksp, &pc);
+    PCSetType(pc, PCASM);
+    PCASMSetType(pc, PC_ASM_RESTRICT);
+    PCASMSetLocalSubdomains(pc, nblk, sub.data(), subLocal.data());
+    KSPSetFromOptions(ksp);
+
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double t0 = MPI_Wtime();
+    KSPSetUp(ksp);
+
+    PetscInt nsub, first;
+    KSP *subksp;
+    PCASMGetSubKSP(pc, &nsub, &first, &subksp);
+    for (PetscInt i = 0; i < nsub; i++)
+    {
+        PC subpc;
+        KSPGetPC(subksp[i], &subpc);
+        KSPSetType(subksp[i], KSPPREONLY);
+        PCSetType(subpc, PCHYPRE);
+        PCHYPRESetType(subpc, "boomeramg");
+        KSPSetFromOptions(subksp[i]);
+    }
+    KSPSetUpOnBlocks(ksp);
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double tSetup = MPI_Wtime() - t0;
+
+    t0 = MPI_Wtime();
+    KSPSolve(ksp, rhsP, yP);
+    MPI_Barrier(PETSC_COMM_WORLD);
+    double tSolve = MPI_Wtime() - t0;
+
+    PetscInt its;
+    KSPConvergedReason reason;
+    KSPGetIterationNumber(ksp, &its);
+    KSPGetConvergedReason(ksp, &reason);
+
+    VecScatterBegin(sc, yP, y, INSERT_VALUES, SCATTER_REVERSE);
+    VecScatterEnd(sc, yP, y, INSERT_VALUES, SCATTER_REVERSE);
+    VecPointwiseMult(x, R, y);
+
+    char lbl[64];
+    snprintf(lbl, sizeof(lbl), "ASM(r,%d/blk,ov %d) AMG V-cyc",
+             (int)radiiPerBlock, (int)ov);
+    Report(A0, rhs0, x, xk_ref, mode, string(lbl), its, reason,
+           tSetup, tSolve, my_rank);
+
+    for (PetscInt k = 0; k < nblk; k++)
+    {
+        ISDestroy(&sub[k]);
+        ISDestroy(&subLocal[k]);
+    }
+    KSPDestroy(&ksp);
+    VecScatterDestroy(&sc);
+    ISDestroy(&isPerm);
+    MatDestroy(&Ap);
+    MatDestroy(&As);
+    VecDestroy(&yP);
+    VecDestroy(&rhsP);
     VecDestroy(&y);
     VecDestroy(&rhs);
     VecDestroy(&L);
@@ -370,12 +554,14 @@ static void CreateRadiusPermutation(PetscInt Nhot, PetscInt Nr, PetscInt nh,
  * (A' = L A0 R) and radius-major permutation (A'' = P A' P^T):
  *   inner = false  outer GMRES,  each block: one BoomerAMG V-cycle (preonly)
  *   inner = true   outer FGMRES, each block: GMRES + BoomerAMG to innerRtol
- * Residual and error are measured on the ORIGINAL system. Returns the
- * iteration count.
+ * Each block holds radiiPerBlock consecutive radii (the last block of a
+ * rank also takes the radii left over). Residual and error are measured on
+ * the ORIGINAL system. Returns the iteration count.
  */
 static PetscInt SolveRadialBlockJacobi(Mat A0, Vec rhs0, Vec xk_ref, PetscInt Nhot,
                                        PetscInt Nr, PetscInt nh, PetscInt nre,
-                                       Scale mode, bool inner, PetscReal innerRtol,
+                                       Scale mode, PetscInt radiiPerBlock,
+                                       bool inner, PetscReal innerRtol,
                                        PetscInt maxits, int my_rank, int size)
 {
     Mat As, Ap;
@@ -404,7 +590,7 @@ static PetscInt SolveRadialBlockJacobi(Mat A0, Vec rhs0, Vec xk_ref, PetscInt Nh
     VecScatterEnd(sc, rhs, rhsP, INSERT_VALUES, SCATTER_FORWARD);
     VecSet(yP, 0.0);
 
-    // ---- outer Krylov + block Jacobi, one block per radius ----
+    // ---- outer Krylov + block Jacobi, radiiPerBlock radii per block ----
     KSP ksp;
     PC pc;
     KSPCreate(PETSC_COMM_WORLD, &ksp);
@@ -418,8 +604,10 @@ static PetscInt SolveRadialBlockJacobi(Mat A0, Vec rhs0, Vec xk_ref, PetscInt Nh
         KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
     KSPGetPC(ksp, &pc);
     PCSetType(pc, PCBJACOBI);
-    vector<PetscInt> lens(nlocal, nh + nre);
-    PCBJacobiSetLocalBlocks(pc, nlocal, lens.data());
+    const PetscInt nblk = max(nlocal / radiiPerBlock, (PetscInt)1); // blocks on this rank
+    vector<PetscInt> lens(nblk, radiiPerBlock * (nh + nre));
+    lens.back() = (nlocal - (nblk - 1) * radiiPerBlock) * (nh + nre);
+    PCBJacobiSetLocalBlocks(pc, nblk, lens.data());
     KSPSetFromOptions(ksp);
 
     MPI_Barrier(PETSC_COMM_WORLD);
@@ -481,7 +669,10 @@ static PetscInt SolveRadialBlockJacobi(Mat A0, Vec rhs0, Vec xk_ref, PetscInt Nh
     VecScatterEnd(sc, yP, y, INSERT_VALUES, SCATTER_REVERSE);
     VecPointwiseMult(x, R, y);
 
-    string label = inner ? "BJ(r) GMRES+AMG / FGMRES" : "BJ(r) AMG V-cycle / GMRES";
+    char lbl[64];
+    snprintf(lbl, sizeof(lbl), "BJ(r,%d/blk) %s",
+             (int)radiiPerBlock, inner ? "GMRES+AMG / FGMRES" : "AMG V-cyc / GMRES");
+    string label(lbl);
     Report(A0, rhs0, x, xk_ref, mode, label, its, reason, tSetup, tSolve, my_rank);
     if (inner && my_rank == 0)
     {
@@ -594,7 +785,7 @@ int main(int argc, char *argv[])
         if (my_rank == 0)
             cerr << "Invalid number of radial cells Nr = " << Nr << " (Nhot " << Nhot
                  << ", Nre " << Nre << " must both be multiples of it). Give it "
-                    "with -nr if petsc_block_sizes.txt has no \"Nr\" line."
+                                       "with -nr if petsc_block_sizes.txt has no \"Nr\" line."
                  << endl;
         dream_finalize();
         MPI_Finalize();
@@ -648,7 +839,7 @@ int main(int argc, char *argv[])
     }
     if (my_rank == 0 && haveFluid && !haveRef)
         cout << "No reference solution (" << refname << "): the fluid unknowns "
-                "are taken as 0, so the system solved is A_kk x_k = b_k."
+                                                        "are taken as 0, so the system solved is A_kk x_k = b_k."
              << endl;
 
     if (haveRef)
@@ -677,21 +868,45 @@ int main(int argc, char *argv[])
     PetscOptionsGetReal(NULL, NULL, "-radbj_inner_rtol", &innerRtol, NULL);
 
     // 1. GMRES + BoomerAMG on the whole kinetic block
-    SolveAMG(Akk, rhs, xk_ref, scale, 1000, my_rank);
+    SolveAMG(Akk, rhs, xk_ref, scale, false, 1000, my_rank);  // defaults
+    SolveAMG(Akk, rhs, xk_ref, scale, true,  1000, my_rank);  // HMIS/ext+i
 
-    // 2. block Jacobi over the radius
+    // 2. subdomain-count scan over the radius: block Jacobi and ASM, from
+    //    one block per rank (coarsest) down to one block per radius
     if (Nr < size)
     {
         if (my_rank == 0)
-            cout << "Skipping block Jacobi over the radius: Nr = " << Nr
-                 << " < " << size << " ranks (each rank needs whole radii)." << endl;
+            cout << "Skipping radial decomposition: Nr = " << Nr << " < "
+                 << size << " ranks (each rank needs whole radii)." << endl;
     }
     else
     {
+        const PetscInt nlocalRadii = Nr / size;   // radii owned per rank (at least)
+
+        if (my_rank == 0)
+            cout << "\nSubdomain-count scan: " << nlocalRadii
+                 << " radii per rank, blocks of 1.." << nlocalRadii
+                 << " radii\n" << endl;
+
+        // Coarsest first, so the degradation shows as the list goes down.
+        for (PetscInt rpb = nlocalRadii; rpb >= 1; rpb /= 2)
+        {
+            if (nlocalRadii % rpb != 0)
+                continue;
+
+            if (my_rank == 0)
+                printf("--- %d radii/block ---\n", (int)rpb);
+
+            SolveRadialBlockJacobi(Akk, rhs, xk_ref, Nhot, Nr, nh, nre, scale,
+                                   rpb, false, innerRtol, 1000, my_rank, size);
+            SolveRadialASM(Akk, rhs, xk_ref, Nhot, Nr, nh, nre, scale,
+                           rpb, 1, 1000, my_rank, size);
+        }
+
+        // The inner-GMRES variant once, at the finest decomposition, to
+        // keep the earlier comparison in the table.
         SolveRadialBlockJacobi(Akk, rhs, xk_ref, Nhot, Nr, nh, nre, scale,
-                               false, innerRtol, 1000, my_rank, size);
-        SolveRadialBlockJacobi(Akk, rhs, xk_ref, Nhot, Nr, nh, nre, scale,
-                               true, innerRtol, 1000, my_rank, size);
+                               1, true, innerRtol, 1000, my_rank, size);
     }
 
     VecRestoreSubVector(b, isK, &bk);
