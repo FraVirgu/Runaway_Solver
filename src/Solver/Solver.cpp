@@ -334,7 +334,13 @@ void Solver::BuildMatrixTransientAdvectionDiffusion(const real_t, const real_t, 
         {
             // Only the transient and advection-diffusion terms are inserted here
             if (!it->second->HasTransientTerm() && it->second->GetAdvectionDiffusion() == nullptr)
+            {
+                if (log)
+                    printf("[matrix]    block (%s, %s) -> SKIPPED (no transient or advection-diffusion term)\n",
+                           unknowns->GetUnknown(uqnId)->GetName().c_str(),
+                           unknowns->GetUnknown(it->first)->GetName().c_str());
                 continue;
+            }
 
             const char *colName = unknowns->GetUnknown(it->first)->GetName().c_str();
             t0 = clk::now();

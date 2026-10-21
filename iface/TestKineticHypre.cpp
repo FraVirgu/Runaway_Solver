@@ -66,12 +66,17 @@ static void LoadVec(const char *name, Vec *x)
     PetscViewerDestroy(&v);
 }
 
-
-enum class Scale { None, Diag, Ruiz };
+enum class Scale
+{
+    None,
+    Diag,
+    Ruiz
+};
 
 static const char *ScaleName(Scale s)
 {
-    return s == Scale::None ? "none" : s == Scale::Diag ? "diag" : "ruiz";
+    return s == Scale::None ? "none" : s == Scale::Diag ? "diag"
+                                                        : "ruiz";
 }
 
 /**
@@ -332,8 +337,8 @@ int main(int argc, char *argv[])
     return 1;
 #endif
 
-    const string matname = "petsc_mat_serial_step1_iter1";
-    const string rhsname = "petsc_rhs_serial_step1_iter1";
+    const string matname = "petsc_mat_np1_step1_iter1";
+    const string rhsname = "petsc_rhs_np1_step1_iter1";
     char refname[PETSC_MAX_PATH_LEN] = "petsc_solution_miilu";
     PetscOptionsGetString(NULL, NULL, "-ref_solution", refname, sizeof(refname), NULL);
 
@@ -444,7 +449,8 @@ int main(int argc, char *argv[])
              << "), " << size << " rank" << (size == 1 ? "" : "s") << endl;
     if (my_rank == 0 && haveFluid && !haveRef)
         cout << "No reference solution (" << refname << "): the fluid unknowns "
-                "are taken as 0, so the system solved is A_kk x_k = b_k." << endl;
+                                                        "are taken as 0, so the system solved is A_kk x_k = b_k."
+             << endl;
 
     // Reference kinetic solution: the kinetic part of the loaded full-system
     // solution, or else a GMRES + BoomerAMG solve of this very system.
@@ -490,12 +496,10 @@ int main(int argc, char *argv[])
             {"default", {}},
             {"strong_threshold 0.5", {{P + "strong_threshold", "0.5"}}},
             {"strong_threshold 0.7", {{P + "strong_threshold", "0.7"}}},
-            {"Jacobi w=0.7", {{P + "relax_type_all", "Jacobi"},
-                              {P + "relax_weight_all", "0.7"}}},
+            {"Jacobi w=0.7", {{P + "relax_type_all", "Jacobi"}, {P + "relax_weight_all", "0.7"}}},
             {"l1scaled-Jacobi", {{P + "relax_type_all", "l1scaled-Jacobi"}}},
             {"agg_nl 1", {{P + "agg_nl", "1"}}},
-            {"thr 0.5 + l1scaled-Jacobi", {{P + "strong_threshold", "0.5"},
-                                           {P + "relax_type_all", "l1scaled-Jacobi"}}},
+            {"thr 0.5 + l1scaled-Jacobi", {{P + "strong_threshold", "0.5"}, {P + "relax_type_all", "l1scaled-Jacobi"}}},
         };
         if (my_rank == 0)
             cout << "Sweep (max " << cap << " iterations per run):" << endl;

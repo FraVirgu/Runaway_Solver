@@ -26,6 +26,7 @@ module load petsc/3.25.2-intelMPI-intel-hypre
 module load gsl/2.7.1--intel-oneapi-mpi--2021.12.1--oneapi--2024.1.0
 module load cmake/3.27.9
 
+# $SLURM_CPU_PER_TASK
 export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export MKL_DYNAMIC=FALSE

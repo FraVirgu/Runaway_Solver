@@ -26,6 +26,8 @@
  * advance the system in time.
  */
 
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <vector>
 #include "DREAM/EquationSystem.hpp"
@@ -133,6 +135,12 @@ void SolverLinearlyImplicit::initialize_internal(
         blockSizesFile << "Nhot " << this->Nhot << "\n";
         blockSizesFile << "Nre " << this->Nre << "\n";
         blockSizesFile << "Ntot " << size << "\n";
+        // Number of radial cells: each kinetic block is radius-major, i.e.
+        // Nr consecutive momentum-space blocks of Nhot/Nr (Nre/Nr) rows.
+        if (!fhot.empty() || !fre.empty())
+            blockSizesFile << "Nr "
+                           << unknowns->GetUnknown(fhot.empty() ? fre[0] : fhot[0])->GetGrid()->GetNr()
+                           << "\n";
     }
 
     this->SelectLinearSolver(size);
@@ -227,6 +235,9 @@ void SolverLinearlyImplicit::initialize_kinetic_only(
         blockSizesFile << "Nhot " << this->Nhot << "\n";
         blockSizesFile << "Nre " << this->Nre << "\n";
         blockSizesFile << "Ntot " << sizeKinetic << "\n";
+        blockSizesFile << "Nr "
+                       << unknowns->GetUnknown(kinetic[0])->GetGrid()->GetNr()
+                       << "\n";
     }
 
     if (this->Verbose())
@@ -363,6 +374,12 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
             cout << "iter_0:time " << std::chrono::duration<double>(end - start).count() << " s" << endl;
         }
 
+        if (this->nTimeStep == 2)
+        {
+            auto end = std::chrono::steady_clock::now();
+            cout << "iter_1:time " << std::chrono::duration<double>(end - start).count() << " s" << endl;
+        }
+
         // Undo the scaling on the solution
         this->Unscale(petsc_S);
 
@@ -375,6 +392,85 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
 
         extiter_conv = true;
     } while (!extiter_conv);
+
+    // Norms of the solution of this time step, for every unknown in the
+    // matrix (N = number of elements of the unknown, f^n = previous step):
+    //   -dream_log_norm
+    static PetscBool logNorm = PETSC_FALSE;
+    static bool logNormRead = false;
+    if (!logNormRead)
+    {
+        PetscOptionsHasName(NULL, NULL, "-dream_log_norm", &logNorm);
+        logNormRead = true;
+    }
+    PetscMPIInt normRank;
+    MPI_Comm_rank(PETSC_COMM_WORLD, &normRank);
+    if (logNorm && normRank == 0)
+    {
+        // (after Store() the whole solution is on every rank)
+        for (len_t id : this->nontrivial_unknowns)
+        {
+            FVM::UnknownQuantity *uq = unknowns->GetUnknown(id);
+            FVM::Grid *grid = uq->GetGrid();
+            const len_t N = uq->NumberOfElements();
+            const real_t *f = unknowns->GetUnknownData(id);
+            const real_t *fp = unknowns->GetUnknownDataPrevious(id);
+
+            real_t l1 = 0, l2 = 0, dl2 = 0, l2p = 0;
+            real_t lmax = 0, fmin = f[0];
+            len_t imax = 0, nNeg = 0;
+            for (len_t i = 0; i < N; i++)
+            {
+                l1 += fabs(f[i]);
+                l2 += f[i] * f[i];
+                if (fabs(f[i]) > lmax)
+                {
+                    lmax = fabs(f[i]);
+                    imax = i;
+                }
+                fmin = min(fmin, f[i]);
+                if (f[i] < 0)
+                    nNeg++;
+                dl2 += (f[i] - fp[i]) * (f[i] - fp[i]);
+                l2p += fp[i] * fp[i];
+            }
+            l2 = sqrt(l2);
+            dl2 = sqrt(dl2);
+            l2p = sqrt(l2p);
+
+            // Density n = int f d^3p (summed over radii), now and at the
+            // previous step, and the cell of max|f| as (ir, i_p1, i_p2)
+            real_t n = 0, np = 0;
+            len_t offset = 0, irMax = 0, i1Max = 0, i2Max = 0;
+            real_t p1Max = 0, p2Max = 0;
+            for (len_t ir = 0; ir < grid->GetNr(); ir++)
+            {
+                FVM::MomentumGrid *mg = grid->GetMomentumGrid(ir);
+                const len_t np1 = mg->GetNp1(), np2 = mg->GetNp2();
+                n += grid->IntegralMomentumAtRadius(ir, f + offset);
+                np += grid->IntegralMomentumAtRadius(ir, fp + offset);
+                if (imax >= offset && imax < offset + np1 * np2)
+                {
+                    irMax = ir;
+                    i1Max = (imax - offset) % np1;
+                    i2Max = (imax - offset) / np1;
+                    p1Max = mg->GetP1(i1Max);
+                    p2Max = mg->GetP2(i2Max);
+                }
+                offset += np1 * np2;
+            }
+
+            printf("[norm] step %4llu  t = %.6e  %-6s  |f|_1/N = %.6e  |f|_2 = %.6e  "
+                   "|f^n+1 - f^n|_2/|f^n|_2 = %.6e\n",
+                   (unsigned long long)this->nTimeStep, (double)(t + dt), uq->GetName().c_str(),
+                   l1 / N, l2, (l2p > 0 ? dl2 / l2p : 0.0));
+            printf("[norm]                                 n = %.6e  (n^n+1 - n^n)/n^n = %+.6e  "
+                   "min f = %+.6e (%llu cells < 0)  max|f| = %.6e at ir=%llu i_p=%llu (p=%.4g) i_xi=%llu (xi=%.4g)\n",
+                   n, (np != 0 ? (n - np) / np : 0.0), fmin, (unsigned long long)nNeg, lmax,
+                   (unsigned long long)irMax, (unsigned long long)i1Max, p1Max,
+                   (unsigned long long)i2Max, p2Max);
+        }
+    }
 
     // petsc_S now holds the (unscaled) solution of this time step. With
     // -dream_save_system it is saved twice: under the name of the matrix and

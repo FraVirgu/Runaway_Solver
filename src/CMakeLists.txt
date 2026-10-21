@@ -116,7 +116,7 @@ set(dream_equations
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Equations/Kinetic/PitchScatterTerm.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Kinetic/ParticleSourceTerm.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Kinetic/PrescribedKineticParameter.cpp"
-    "${PROJECT_SOURCE_DIR}/src/Equations/Kinetic/RechesterRosenbluthTransport.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Equations/Kinetic/RechesterRosenbluthTransport.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/Kinetic/RipplePitchScattering.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Equations/Kinetic/SlowingDownTerm.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Equations/Kinetic/SynchrotronTerm.cpp"

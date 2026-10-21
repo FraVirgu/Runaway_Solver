@@ -249,6 +249,17 @@ void Operator::SetMatrixElementsTransientAdvectionDiffusionTerms(Matrix *mat, re
                    TermLog::ms(t0, TermLog::clk::now()));
     }
 
+    // Other terms of this operator, which are left out of this matrix
+    if (log)
+    {
+        for (auto it = eval_terms.begin(); it != eval_terms.end(); it++)
+            printf("[matrix]              SKIPPED term (evaluable) %-34s\n", TermLog::Label(*it).c_str());
+        for (auto it = terms.begin(); it != terms.end(); it++)
+            printf("[matrix]              SKIPPED term             %-34s\n", TermLog::Label(*it).c_str());
+        if (predetermined != nullptr)
+            printf("[matrix]              SKIPPED term (predetermined) %-30s\n", TermLog::Label(predetermined).c_str());
+    }
+
     // Boundary conditions (as in 'SetMatrixElements()')
     if (boundaryConditions.empty())
         return;
