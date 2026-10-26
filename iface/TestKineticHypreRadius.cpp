@@ -34,8 +34,10 @@
  *     f_re:  [Nhot + ir*nre, Nhot+(ir+1)*nre) nre = Nre/Nr
  * which are not contiguous. For the block-Jacobi solves A_kk is therefore
  * permuted to radius-major order (hot then re, per radius), with whole radii
- * assigned to each rank, so that every block is local to one rank. Requires
- * Nr >= number of ranks.
+ * assigned to each rank, so that every block is local to one rank. With
+ * more ranks than radii (number of ranks a multiple of Nr) each radius is
+ * split over size/Nr ranks instead: one block per radius, solved by a
+ * parallel BoomerAMG on its sub-communicator (block Jacobi only, no ASM).
  *
  * Inputs: petsc_mat_np1_step1_iter1, petsc_rhs_np1_step1_iter1,
  * petsc_block_sizes.txt (Nhot, Nre, Nr) and the optional reference solution.
@@ -527,26 +529,45 @@ static void SolveAMGReference(Mat A0, Vec b, Vec x, int my_rank)
  * [p*Nr/size, (p+1)*Nr/size); for each, its nh f_hot rows followed by its
  * nre f_re rows. The global index set lists, in new order, the OLD row of
  * every new row. *nlocalRadii is the number of radii (blocks) on this rank.
+ *
+ * With more ranks than radii (size > Nr, size a multiple of Nr) each radius
+ * is instead split over k = size/Nr consecutive ranks, rank p holding slice
+ * p%k of radius p/k; *nlocalRadii is then 0. The new row of (radius ir,
+ * local index j) is still ir*(nh+nre) + j.
  */
 static void CreateRadiusPermutation(PetscInt Nhot, PetscInt Nr, PetscInt nh,
                                     PetscInt nre, int my_rank, int size,
                                     IS *isPerm, PetscInt *nlocalRadii)
 {
-    const PetscInt r0 = (PetscInt)my_rank * Nr / size;
-    const PetscInt r1 = (PetscInt)(my_rank + 1) * Nr / size;
-
     vector<PetscInt> idx;
-    idx.reserve((r1 - r0) * (nh + nre));
-    for (PetscInt ir = r0; ir < r1; ir++)
+    if (size > Nr)
     {
-        for (PetscInt i = 0; i < nh; i++)
-            idx.push_back(ir * nh + i);
-        for (PetscInt i = 0; i < nre; i++)
-            idx.push_back(Nhot + ir * nre + i);
+        const PetscInt k = size / Nr, nb = nh + nre;
+        const PetscInt ir = my_rank / k, s = my_rank % k;
+        const PetscInt j0 = s * nb / k, j1 = (s + 1) * nb / k;
+
+        idx.reserve(j1 - j0);
+        for (PetscInt j = j0; j < j1; j++)
+            idx.push_back(j < nh ? ir * nh + j : Nhot + ir * nre + (j - nh));
+        *nlocalRadii = 0;
+    }
+    else
+    {
+        const PetscInt r0 = (PetscInt)my_rank * Nr / size;
+        const PetscInt r1 = (PetscInt)(my_rank + 1) * Nr / size;
+
+        idx.reserve((r1 - r0) * (nh + nre));
+        for (PetscInt ir = r0; ir < r1; ir++)
+        {
+            for (PetscInt i = 0; i < nh; i++)
+                idx.push_back(ir * nh + i);
+            for (PetscInt i = 0; i < nre; i++)
+                idx.push_back(Nhot + ir * nre + i);
+        }
+        *nlocalRadii = r1 - r0;
     }
     ISCreateGeneral(PETSC_COMM_WORLD, (PetscInt)idx.size(), idx.data(),
                     PETSC_COPY_VALUES, isPerm);
-    *nlocalRadii = r1 - r0;
 }
 
 /**
@@ -557,6 +578,12 @@ static void CreateRadiusPermutation(PetscInt Nhot, PetscInt Nr, PetscInt nh,
  * Each block holds radiiPerBlock consecutive radii (the last block of a
  * rank also takes the radii left over). Residual and error are measured on
  * the ORIGINAL system. Returns the iteration count.
+ *
+ * With more ranks than radii (size > Nr) there are fewer blocks than ranks:
+ * PETSc then gives each block a sub-communicator of the size/(Nr/
+ * radiiPerBlock) consecutive ranks that own its rows, and the sub-solver
+ * (BoomerAMG) runs in parallel on it. The outer Krylov method still runs
+ * on all ranks.
  */
 static PetscInt SolveRadialBlockJacobi(Mat A0, Vec rhs0, Vec xk_ref, PetscInt Nhot,
                                        PetscInt Nr, PetscInt nh, PetscInt nre,
@@ -604,10 +631,16 @@ static PetscInt SolveRadialBlockJacobi(Mat A0, Vec rhs0, Vec xk_ref, PetscInt Nh
         KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
     KSPGetPC(ksp, &pc);
     PCSetType(pc, PCBJACOBI);
-    const PetscInt nblk = max(nlocal / radiiPerBlock, (PetscInt)1); // blocks on this rank
-    vector<PetscInt> lens(nblk, radiiPerBlock * (nh + nre));
-    lens.back() = (nlocal - (nblk - 1) * radiiPerBlock) * (nh + nre);
-    PCBJacobiSetLocalBlocks(pc, nblk, lens.data());
+    if (size > Nr)
+        // fewer blocks than ranks: each block spans several ranks
+        PCBJacobiSetTotalBlocks(pc, Nr / radiiPerBlock, NULL);
+    else
+    {
+        const PetscInt nblk = max(nlocal / radiiPerBlock, (PetscInt)1); // blocks on this rank
+        vector<PetscInt> lens(nblk, radiiPerBlock * (nh + nre));
+        lens.back() = (nlocal - (nblk - 1) * radiiPerBlock) * (nh + nre);
+        PCBJacobiSetLocalBlocks(pc, nblk, lens.data());
+    }
     KSPSetFromOptions(ksp);
 
     MPI_Barrier(PETSC_COMM_WORLD);
@@ -873,11 +906,25 @@ int main(int argc, char *argv[])
 
     // 2. subdomain-count scan over the radius: block Jacobi and ASM, from
     //    one block per rank (coarsest) down to one block per radius
-    if (Nr < size)
+    if (Nr < size && size % Nr != 0)
     {
         if (my_rank == 0)
             cout << "Skipping radial decomposition: Nr = " << Nr << " < "
-                 << size << " ranks (each rank needs whole radii)." << endl;
+                 << size << " ranks and " << size << " is not a multiple of Nr." << endl;
+    }
+    else if (Nr < size)
+    {
+        // More ranks than radii: one block per radius, each block split over
+        // size/Nr ranks and solved by a parallel BoomerAMG on them. ASM is
+        // not run here (PCASM subdomains cannot span ranks).
+        if (my_rank == 0)
+            cout << "\nMulti-rank blocks: one block per radius, " << size / Nr
+                 << " ranks per block\n" << endl;
+
+        SolveRadialBlockJacobi(Akk, rhs, xk_ref, Nhot, Nr, nh, nre, scale,
+                               1, false, innerRtol, 1000, my_rank, size);
+        SolveRadialBlockJacobi(Akk, rhs, xk_ref, Nhot, Nr, nh, nre, scale,
+                               1, true, innerRtol, 1000, my_rank, size);
     }
     else
     {
