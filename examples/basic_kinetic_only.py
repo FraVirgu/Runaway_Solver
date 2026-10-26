@@ -34,7 +34,7 @@ import os
 import sys
 import numpy as np
 
-DREAM_ROOT = os.path.expanduser(os.environ.get('DREAM_ROOT', '~/Desktop/DREAM'))
+DREAM_ROOT = os.path.expanduser(os.environ.get('DREAM_ROOT', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'DREAM')))
 OUT_DIR = os.path.expanduser(
     os.environ.get('KINETIC_OUT_DIR', os.path.join(DREAM_ROOT, 'build', 'iface')))
 
