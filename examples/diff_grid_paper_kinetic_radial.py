@@ -175,7 +175,7 @@ NXI_RE  = 100 * _f          # many xi
 # =====================================================================
 # Number of radial cells. Each cell carries a full copy of both momentum
 # grids, so the matrix size scales linearly with NR.
-Nr = int(os.environ.get('NR', 8))
+Nr = int(os.environ.get('NR', 16))
 
 # Minor radius (= wall radius) [m].
 A_MINOR = 0.22
