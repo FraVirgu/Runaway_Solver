@@ -19,12 +19,14 @@
 # (D_rr = pi q R0 (dB/B)^2 |v_par|) switched on for both f_hot and f_re,
 # with f = 0 outside the plasma. This adds the radial term of DREAM's
 # Eq. (1) that the paper does not have, and couples the Nr momentum-space
-# blocks through a tridiagonal-in-r structure.
+# blocks through a tridiagonal-in-r structure. A prescribed radial
+# advection A_r (default +1 m/s, outward) is added on top, which makes that
+# coupling non-symmetric.
 #
 # Run as
 #
 #   $ ./diff_grid_paper_kinetic_radial.py                    # defaults
-#   $ LEVEL=3 NR=16 DBB=1e-4 ./diff_grid_paper_kinetic_radial.py
+#   $ LEVEL=3 NR=16 DBB=1e-4 AR=1 ./diff_grid_paper_kinetic_radial.py
 #   $ cd $DREAM_ROOT/build/iface && ./dreami dream_settings_paper_radial_L2_Nr8.h5
 #
 # ###################################################################
@@ -192,6 +194,10 @@ A_MINOR = 0.22
 DBB = float(os.environ.get('DBB', 1e-4))
 D_RR_REL = np.pi * c * DBB**2       # [m^2/s], v_par = c, q = R0 = 1
 
+# Radial advection A_r [m/s], the same constant at every (t, r, p, xi) on
+# both kinetic grids; positive is outward. AR=0 switches it off.
+AR = float(os.environ.get('AR', 1.0))
+
 # Cluster the runaway pitch grid near xi = +-1, the static analogue of the
 # paper's AMR. thetasep is the pitch angle separating the two uniform
 # regions and nthetasep_frac the fraction of points placed below it.
@@ -346,7 +352,11 @@ if DBB > 0:
     print(f'    a^2 / D_rr           {A_MINOR**2/D_RR_REL/tau_c:.3e} tau_c')
 else:
     print(f'  radial transport       OFF (DBB = 0)')
-print(f'  matrix size            {N_tot:,d}')
+if AR != 0:
+    print(f'  radial advection       A_r = {AR:+.3e} m/s   (a / |A_r| = {A_MINOR/abs(AR)/tau_c:.3e} tau_c)')
+else:
+    print(f'  radial advection       OFF (AR = 0)')
+print(f'  matrix size           {N_tot:,d}')
 for P in (1, 8, 32, 256):
     print(f'    on {P:4d} rank(s): {N_tot//P:10,d} unknowns/rank'
           + ('   <- paper regime' if 100 <= N_tot//P <= 2000 else ''))
@@ -443,6 +453,37 @@ if DBB > 0:
     ds.eqsys.f_hot.transport.setBoundaryCondition(Transport.BC_F_0)
     ds.eqsys.f_re.transport.setMagneticPerturbation(DBB)
     ds.eqsys.f_re.transport.setBoundaryCondition(Transport.BC_F_0)
+
+
+def addRadialAdvection(tr, ar):
+    """
+    Prescribe the radial advection ar [m/s] (scalar: constant in t, r, p,
+    xi) on the kinetic transport settings tr, keeping a Rechester-Rosenbluth
+    dB/B set before. The C++ side builds every coefficient present in the
+    settings (ar and dBB together, with a warning), but TransportSettings
+    writes ar only for type PRESCRIBED and dBB only for type
+    RECHESTER_ROSENBLUTH, so with both ar is added to the dictionary here.
+    """
+    rr = (tr.type == Transport.TRANSPORT_RECHESTER_ROSENBLUTH)
+    tr.prescribeAdvection(ar)
+    tr.setBoundaryCondition(Transport.BC_F_0)
+    if not rr:
+        return
+
+    tr.type = Transport.TRANSPORT_RECHESTER_ROSENBLUTH
+    todict = tr.todict
+    def todict_with_ar():
+        data = todict()
+        data['ar'] = {'x': tr.ar, 'r': tr.ar_r, 't': tr.ar_t,
+                      'interp3d': tr.ar_interp3d, 'p': tr.ar_p, 'xi': tr.ar_xi}
+        return data
+    tr.todict = todict_with_ar
+
+
+# Radial advection A_r on both kinetic grids, on top of the diffusion above
+if AR != 0:
+    addRadialAdvection(ds.eqsys.f_hot.transport, AR)
+    addRadialAdvection(ds.eqsys.f_re.transport, AR)
 
 # ---------------------------------------------------------------------
 # Solver
