@@ -196,7 +196,8 @@ D_RR_REL = np.pi * c * DBB**2       # [m^2/s], v_par = c, q = R0 = 1
 
 # Radial advection A_r [m/s], the same constant at every (t, r, p, xi) on
 # both kinetic grids; positive is outward. AR=0 switches it off.
-AR = float(os.environ.get('AR', 1.0))
+# Default: 10 times the numerical value of E in V/m (~2.06 m/s at E = 5 E_c).
+AR = float(os.environ.get('AR', 10.0 * E))
 
 # Cluster the runaway pitch grid near xi = +-1, the static analogue of the
 # paper's AMR. thetasep is the pitch angle separating the two uniform
