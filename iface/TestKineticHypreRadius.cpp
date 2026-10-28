@@ -7,8 +7,8 @@
  *
  *     A_kk x_k = b_k - A_kf x_f
  *
- * (x_f from the reference solution -ref_solution if it exists, else 0; if
- * there is no reference, it is computed here with GMRES + BoomerAMG.)
+ * (x_f from the reference solution -ref_solution if it exists, else 0; the
+ * reference is also used for the relative error, printed as n/a without it.)
  *
  * Solver: GMRES + block Jacobi over the RADIUS: one block per radial cell,
  * holding the f_hot AND the f_re unknowns of that radius (the momentum-space
@@ -150,7 +150,8 @@ static void BuildScaling(Mat A, Scale mode, Vec L, Vec R)
 
 /**
  * Relative residual and relative error of x on the ORIGINAL (unscaled,
- * unpermuted) system A0 x = b, printed as one result line.
+ * unpermuted) system A0 x = b, printed as one result line. Without a
+ * reference solution (x_ref = nullptr) the error is printed as n/a.
  */
 static void Report(Mat A0, Vec b, Vec x, Vec x_ref, Scale mode, const string &label,
                    PetscInt its, KSPConvergedReason reason, double tSetup,
@@ -165,104 +166,27 @@ static void Report(Mat A0, Vec b, Vec x, Vec x_ref, Scale mode, const string &la
     VecNorm(b, NORM_2, &rhsNorm);
     PetscReal relRes = rhsNorm > 0 ? resNorm / rhsNorm : resNorm;
 
-    VecWAXPY(r, -1.0, x_ref, x);
-    PetscReal errNorm, refNorm;
-    VecNorm(r, NORM_2, &errNorm);
-    VecNorm(x_ref, NORM_2, &refNorm);
-    PetscReal relErr = refNorm > 0 ? errNorm / refNorm : errNorm;
+    char errStr[16] = "n/a";
+    if (x_ref)
+    {
+        VecWAXPY(r, -1.0, x_ref, x);
+        PetscReal errNorm, refNorm;
+        VecNorm(r, NORM_2, &errNorm);
+        VecNorm(x_ref, NORM_2, &refNorm);
+        PetscReal relErr = refNorm > 0 ? errNorm / refNorm : errNorm;
+        snprintf(errStr, sizeof(errStr), "%.2e", (double)relErr);
+    }
     VecDestroy(&r);
 
     if (my_rank == 0)
     {
         printf("%-12s %-34s its %5d  %-9s setup %7.3f s  solve %8.3f s  "
-               "res %.2e  err %.2e\n",
+               "res %.2e  err %s\n",
                ScaleName(mode), label.c_str(), (int)its,
                reason > 0 ? "converged" : "DIVERGED", tSetup, tSolve,
-               (double)relRes, (double)relErr);
+               (double)relRes, errStr);
         fflush(stdout); // stdout is a file in batch jobs: write the line now
     }
-}
-
-
-/**
- * Reference solution of A x = b with GMRES + hypre/BoomerAMG, after row
- * scaling with 1/|diag(A)| and to a tight tolerance. Used when no reference
- * solution file is available. Options under the prefix "amgref_".
- */
-static void SolveAMGReference(Mat A0, Vec b, Vec x, int my_rank)
-{
-    Mat As;
-    Vec L, R, rhs, y;
-    MatDuplicate(A0, MAT_COPY_VALUES, &As);
-    MatCreateVecs(A0, &y, &rhs);
-    VecDuplicate(rhs, &L);
-    VecDuplicate(rhs, &R);
-
-    // A' = L A, rhs' = L b (R = 1 for the diagonal scaling, so x = y)
-    BuildScaling(A0, Scale::Diag, L, R);
-    MatDiagonalScale(As, L, R);
-    VecPointwiseMult(rhs, L, b);
-    VecSet(y, 0.0);
-
-    KSP ksp;
-    PC pc;
-    KSPCreate(PETSC_COMM_WORLD, &ksp);
-    KSPSetOptionsPrefix(ksp, "amgref_");
-    KSPSetOperators(ksp, As, As);
-    KSPSetType(ksp, KSPGMRES);
-    KSPGMRESSetRestart(ksp, 100);
-    KSPSetTolerances(ksp, 1e-12, PETSC_DEFAULT, PETSC_DEFAULT, 1000);
-    KSPSetInitialGuessNonzero(ksp, PETSC_FALSE);
-    KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
-    KSPGetPC(ksp, &pc);
-    PCSetType(pc, PCHYPRE);
-    PCHYPRESetType(pc, "boomeramg");
-    KSPSetFromOptions(ksp);
-
-    MPI_Barrier(PETSC_COMM_WORLD);
-    double t0 = MPI_Wtime();
-    KSPSetUp(ksp);
-    MPI_Barrier(PETSC_COMM_WORLD);
-    double tSetup = MPI_Wtime() - t0;
-
-    t0 = MPI_Wtime();
-    KSPSolve(ksp, rhs, y);
-    MPI_Barrier(PETSC_COMM_WORLD);
-    double tSolve = MPI_Wtime() - t0;
-
-    PetscInt its;
-    KSPConvergedReason reason;
-    KSPGetIterationNumber(ksp, &its);
-    KSPGetConvergedReason(ksp, &reason);
-
-    VecPointwiseMult(x, R, y); // x = R y
-
-    Vec r;
-    VecDuplicate(b, &r);
-    MatMult(A0, x, r);
-    VecAXPY(r, -1.0, b);
-    PetscReal resNorm, rhsNorm;
-    VecNorm(r, NORM_2, &resNorm);
-    VecNorm(b, NORM_2, &rhsNorm);
-    PetscReal relRes = rhsNorm > 0 ? resNorm / rhsNorm : resNorm;
-    VecDestroy(&r);
-
-    if (my_rank == 0)
-    {
-        printf("%-12s %-34s its %5d  %-9s setup %7.3f s  solve %8.3f s  "
-               "res %.2e  err (reference)\n",
-               "diag", "reference GMRES+AMG rtol 1e-12", (int)its,
-               reason > 0 ? "converged" : "DIVERGED", tSetup, tSolve,
-               (double)relRes);
-        fflush(stdout);
-    }
-
-    KSPDestroy(&ksp);
-    MatDestroy(&As);
-    VecDestroy(&y);
-    VecDestroy(&rhs);
-    VecDestroy(&L);
-    VecDestroy(&R);
 }
 
 /**
@@ -583,11 +507,6 @@ int main(int argc, char *argv[])
 
     if (haveRef)
         VecGetSubVector(xref, isK, &xk_ref);
-    else
-    {
-        VecDuplicate(rhs, &xk_ref);
-        SolveAMGReference(Akk, rhs, xk_ref, my_rank);
-    }
 
     char scaleStr[16] = "none";
     PetscOptionsGetString(NULL, NULL, "-scale", scaleStr, sizeof(scaleStr), NULL);
@@ -628,8 +547,6 @@ int main(int argc, char *argv[])
         VecRestoreSubVector(xref, isF, &xf);
     if (haveRef)
         VecRestoreSubVector(xref, isK, &xk_ref);
-    else
-        VecDestroy(&xk_ref);
     VecDestroy(&rhs);
     MatDestroy(&Akk);
     if (useFluid)
