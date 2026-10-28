@@ -61,3 +61,21 @@ PETSC_OPTIONS="-dream_kinetic_only -dream_scale diag" mpirun -n 3 ./dreami ./dre
 
 export DREAM_ROOT=/pitagora/home/userexternal/fvirgult/DREAM
 python basic_kinetic_only.py
+
+
+
+
+
+----------------- OPENMP + MPI 
+
+
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+PETSC_OPTIONS="-scale diag -log_view" \
+mpirun -n 1 --bind-to core --map-by core --report-bindings ./testkinetichypreradius
+
+
+OMP_NUM_THREADS=4 OMP_PLACES=cores OMP_PROC_BIND=close \
+OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+PETSC_OPTIONS="-scale diag -log_view" \
+mpirun -n 1 --map-by slot:PE=4 --bind-to core --report-bindings ./testkinetichypreradius
+

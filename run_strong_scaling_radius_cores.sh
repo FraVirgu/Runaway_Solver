@@ -39,7 +39,7 @@
 # (whole radii per rank) or a multiple of it (each radius split over n/Nr
 # ranks); other n are skipped by the test.
 
-PETSC_MODULE=${PETSC_MODULE:-petsc/3.25.2-intelMPI-intel-hypre}
+PETSC_MODULE=${PETSC_MODULE:-petsc/3.25.2-intelMPI-intel-hypre_omp}
 
 module use /pitagora_work/FUPA2_REDISMHD/fcipolle/modulefiles
 module purge
