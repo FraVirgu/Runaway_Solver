@@ -67,7 +67,7 @@ mc2 = 510998.95             # electron rest energy [eV]
 P_RE  = 1.0                 # hot/runaway grid interface
 P_MAX = 60.0
 
-LEVEL = int(os.environ.get('LEVEL', 2))
+LEVEL = int(os.environ.get('LEVEL', 4))
 _f = 2 ** LEVEL
 
 NP_HOT  = 125 * _f          # many p

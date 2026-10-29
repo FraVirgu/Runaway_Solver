@@ -3,6 +3,8 @@
 #SBATCH --output=radius_cores_%j.out
 #SBATCH --error=radius_cores_%j.err
 #SBATCH --nodes=1
+#SBATCH --ntasks-per-node=256         # reserve every core as a task slot, so steps up to 256 ranks fit
+#SBATCH --cpus-per-task=1
 #SBATCH --time=0-04:00:00
 #SBATCH --account=FUPA2_REDISMHD
 #SBATCH --partition=dcgp_fua_prod
@@ -19,9 +21,7 @@
 # run keeps its own log.
 #
 # Only hypre/BoomerAMG uses the threads (MKL is kept at 1 thread), so t > 1
-# needs an executable built against the OpenMP PETSc (PETSC_MODULE). Threads
-# are used only when Nr <= n*t (several cores per radius); with fewer cores
-# than radii the (n, t > 1) combination is skipped.
+# needs an executable built against the OpenMP PETSc (PETSC_MODULE).
 #
 # The system must already be dumped in $DATADIR by dreami (save_sys on):
 #   petsc_mat_np1_step1_iter1, petsc_rhs_np1_step1_iter1,
@@ -109,10 +109,6 @@ for n in $NPROCS; do
             echo "skipping n = $n, t = $t: $((n * t)) cores > $CORES_PER_NODE cores of the node"
             continue
         fi
-        if [ -n "$NR" ] && (( t > 1 && n * t < NR )); then
-            echo "skipping n = $n, t = $t: $((n * t)) cores < Nr = $NR, threads only when Nr <= cores"
-            continue
-        fi
         export OMP_NUM_THREADS=$t
 
         for r in $(seq 1 $REPEATS); do
@@ -120,7 +116,8 @@ for n in $NPROCS; do
             LOG=$OUTDIR/radius_n${n}_t${t}_r${r}.log
 
             t0=$(date +%s.%N)
-            srun --nodes=1 --ntasks=$n --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores \
+            # explicit per-step layout: overrides the job's ntasks-per-node/cpus-per-task inherited from the environment
+            srun --nodes=1 --ntasks=$n --ntasks-per-node=$n --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores \
                  stdbuf -oL $EXE > $LOG 2>&1
             code=$?
             t1=$(date +%s.%N)
