@@ -121,6 +121,9 @@ void SolverLinearlyImplicit::initialize_internal(
     for (len_t id : fre)
         this->Nre += this->unknown_equations->at(id)->NumberOfElements();
 
+    if (!fhot.empty() || !fre.empty())
+        this->Nr = unknowns->GetUnknown(fhot.empty() ? fre[0] : fhot[0])->GetGrid()->GetNr();
+
     // Save the block sizes MIILU needs to reconstruct the same
     // -dream_split populations index sets (is_fhot/is_fre/is_fluid) when
     // replaying the dumped matrices through a separate (e.g. parallel)
@@ -138,9 +141,7 @@ void SolverLinearlyImplicit::initialize_internal(
         // Number of radial cells: each kinetic block is radius-major, i.e.
         // Nr consecutive momentum-space blocks of Nhot/Nr (Nre/Nr) rows.
         if (!fhot.empty() || !fre.empty())
-            blockSizesFile << "Nr "
-                           << unknowns->GetUnknown(fhot.empty() ? fre[0] : fhot[0])->GetGrid()->GetNr()
-                           << "\n";
+            blockSizesFile << "Nr " << this->Nr << "\n";
     }
 
     this->SelectLinearSolver(size);
@@ -222,6 +223,8 @@ void SolverLinearlyImplicit::initialize_kinetic_only(
     for (len_t id : fre)
         this->Nre += this->unknown_equations->at(id)->NumberOfElements();
 
+    this->Nr = unknowns->GetUnknown(kinetic[0])->GetGrid()->GetNr();
+
     const len_t sizeKinetic = this->Nhot + this->Nre;
     this->matrix_size = sizeKinetic;
 
@@ -235,9 +238,7 @@ void SolverLinearlyImplicit::initialize_kinetic_only(
         blockSizesFile << "Nhot " << this->Nhot << "\n";
         blockSizesFile << "Nre " << this->Nre << "\n";
         blockSizesFile << "Ntot " << sizeKinetic << "\n";
-        blockSizesFile << "Nr "
-                       << unknowns->GetUnknown(kinetic[0])->GetGrid()->GetNr()
-                       << "\n";
+        blockSizesFile << "Nr " << this->Nr << "\n";
     }
 
     if (this->Verbose())

@@ -39,9 +39,11 @@
  * split over size/Nr ranks instead: one block per radius, solved by a
  * parallel BoomerAMG on its sub-communicator (block Jacobi only, no ASM).
  *
- * Inputs: petsc_mat_np1_step1_iter1, petsc_rhs_np1_step1_iter1,
- * petsc_block_sizes.txt (Nhot, Nre, Nr) and the optional reference solution.
+ * Inputs: the matrix and right-hand side, petsc_block_sizes.txt (Nhot, Nre,
+ * Nr) and the optional reference solution.
  * Options:
+ *   -mat <file>                 matrix (default petsc_mat_np1_step1_iter1)
+ *   -rhs <file>                 right-hand side (default petsc_rhs_np1_step1_iter1)
  *   -ref_solution <file>        reference solution (default petsc_solution_miilu)
  *   -scale none|diag|ruiz       row/column scaling of A_kk before solving
  *   -nr <Nr>                    number of radial cells, if petsc_block_sizes.txt
@@ -749,8 +751,12 @@ int main(int argc, char *argv[])
     return 1;
 #endif
 
-    const string matname = "petsc_mat_np1_step1_iter1";
-    const string rhsname = "petsc_rhs_np1_step1_iter1";
+    char matbuf[PETSC_MAX_PATH_LEN] = "petsc_mat_np1_step1_iter1";
+    char rhsbuf[PETSC_MAX_PATH_LEN] = "petsc_rhs_np1_step1_iter1";
+    PetscOptionsGetString(NULL, NULL, "-mat", matbuf, sizeof(matbuf), NULL);
+    PetscOptionsGetString(NULL, NULL, "-rhs", rhsbuf, sizeof(rhsbuf), NULL);
+    const string matname = matbuf;
+    const string rhsname = rhsbuf;
     char refname[PETSC_MAX_PATH_LEN] = "petsc_solution_miilu";
     PetscOptionsGetString(NULL, NULL, "-ref_solution", refname, sizeof(refname), NULL);
 

@@ -237,7 +237,9 @@ def make_settings(name, s, dt):
     # -----------------------------------------------------------------
     ds.solver.setType(Solver.LINEAR_IMPLICIT)
     ds.solver.preconditioner.setEnabled(False)
-    ds.solver.setLinearSolver(Solver.LINEAR_SOLVER_AMG)
+    # block Jacobi over the radius (GMRES+AMG per block, outer FGMRES);
+    # -dream_rbj_radii_per_block sets the radii per block (default 1)
+    ds.solver.setLinearSolver(Solver.LINEAR_SOLVER_RADIAL_BJ)
 
     ds.other.include('fluid', 'nu_s', 'nu_D')
 

@@ -34,6 +34,7 @@
 #
 #   $ sbatch run_strong_scaling_radius_cores.sh
 #   $ NPROCS="16 32 64" THREADS="1 4 16" REPEATS=3 sbatch run_strong_scaling_radius_cores.sh
+#   $ MATFILE=my_mat RHSFILE=my_rhs sbatch run_strong_scaling_radius_cores.sh
 #
 # The radial block Jacobi needs the number of ranks n to be a divisor of Nr
 # (whole radii per rank) or a multiple of it (each radius split over n/Nr
@@ -75,7 +76,12 @@ OUTDIR=$DATADIR/scaling_radius_cores_${SLURM_JOB_ID}
 mkdir -p $OUTDIR
 cd $DATADIR
 
-for f in $EXE petsc_mat_np1_step1_iter1 petsc_rhs_np1_step1_iter1 petsc_block_sizes.txt; do
+# system to solve, passed to the test as -mat / -rhs
+MATFILE=${MATFILE:-petsc_mat_np1_step1_iter1}
+RHSFILE=${RHSFILE:-petsc_rhs_np1_step1_iter1}
+export PETSC_OPTIONS="$PETSC_OPTIONS -mat $MATFILE -rhs $RHSFILE"
+
+for f in $EXE $MATFILE $RHSFILE petsc_block_sizes.txt; do
     if [ ! -f $f ]; then
         echo "'$f' not found (in $DATADIR)." >&2
         exit 1

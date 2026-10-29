@@ -21,6 +21,7 @@
 #include "FVM/Solvers/MILU.hpp"
 #include "FVM/Solvers/MIILU.hpp"
 #include "FVM/Solvers/MIAMG.hpp"
+#include "FVM/Solvers/MIRadialBJ.hpp"
 #ifdef PETSC_HAVE_MKL_PARDISO
 #include "FVM/Solvers/MIMKL.hpp"
 #endif
@@ -1061,6 +1062,8 @@ FVM::MatrixInverter *Solver::ConstructLinearSolver(const len_t N, enum OptionCon
         return new FVM::MIILU(N, this->Nhot, this->Nre);
     else if (ls == OptionConstants::LINEAR_SOLVER_AMG)
         return new FVM::MIAMG(N);
+    else if (ls == OptionConstants::LINEAR_SOLVER_RADIAL_BJ)
+        return new FVM::MIRadialBJ(N, this->Nhot, this->Nre, this->Nr);
     else if (ls == OptionConstants::LINEAR_SOLVER_MKL)
     {
 #ifdef PETSC_HAVE_MKL_PARDISO

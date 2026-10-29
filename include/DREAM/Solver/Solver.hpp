@@ -102,6 +102,8 @@ namespace DREAM
 
         len_t Nhot;
         len_t Nre;
+        // Number of radial cells of the kinetic unknowns (radial block Jacobi)
+        len_t Nr = 1;
 
         // If true, BuildMatrix() ignores every operator that is applied to
         // an unknown which is not in the matrix, instead of moving it to

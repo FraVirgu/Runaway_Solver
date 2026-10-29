@@ -157,7 +157,8 @@ enum linear_solver
     LINEAR_SOLVER_SUPERLU = 4,
     LINEAR_SOLVER_GMRES = 5,
     LINEAR_SOLVER_ILU = 6,
-    LINEAR_SOLVER_AMG = 7
+    LINEAR_SOLVER_AMG = 7,
+    LINEAR_SOLVER_RADIAL_BJ = 8 // block Jacobi over the radius, GMRES+AMG per block, outer FGMRES
 };
 
 /////////////////////////////////////
