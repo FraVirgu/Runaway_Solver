@@ -28,8 +28,9 @@
 #   $ sbatch run_strong_scaling_radius.sh
 #   $ NPROCS="1 2 4 8 16 32 64 128 256 512" sbatch --nodes=2 run_strong_scaling_radius.sh
 #
-# The radial block-Jacobi/ASM part needs whole radii on every rank, so it is
-# skipped by the test when n > Nr; choose Nr as a multiple of the largest n.
+# The radial block Jacobi needs n to be a divisor of Nr (whole radii per rank)
+# or a multiple of it (each radius split over several ranks), else it is
+# skipped by the test.
 
 module use /pitagora_work/FUPA2_REDISMHD/fcipolle/modulefiles
 module purge

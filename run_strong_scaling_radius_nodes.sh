@@ -34,7 +34,7 @@
 # The system must already be dumped in $DATADIR by dreami (save_sys on), see
 # run_strong_scaling_radius_cores.sh. The radial block-Jacobi part needs the
 # number of ranks to be a divisor of Nr (whole radii per rank) or a multiple
-# of it (each radius split over several ranks); ASM only runs in the first case.
+# of it (each radius split over several ranks).
 
 module use /pitagora_work/FUPA2_REDISMHD/fcipolle/modulefiles
 module purge
