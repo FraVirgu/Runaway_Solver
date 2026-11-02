@@ -41,7 +41,9 @@
 #
 # The radial block Jacobi needs the number of ranks n to be a divisor of Nr
 # (whole radii per rank) or a multiple of it (each radius split over n/Nr
-# ranks); other n are skipped by the test.
+# ranks); n > Nr that are not multiples of Nr are skipped (the test would skip
+# them too). n < Nr that do not divide Nr run, with unequal radii per rank.
+# With Nr = 11 the useful counts are e.g. NPROCS="1 11 22 44 88 176".
 
 PETSC_MODULE=${PETSC_MODULE:-petsc/3.25.2-intelMPI-intel-hypre_omp}
 
@@ -114,15 +116,20 @@ for sys in $SYSTEMS; do
     echo "##### $sys: Nr = $NR, 1 node, PETSC_OPTIONS = '$PETSC_OPTIONS' #####"
 
     for n in $NPROCS; do
-        if (( n > CORES_PER_NODE || CORES_PER_NODE % n != 0 )); then
-            echo "skipping n = $n: must divide the $CORES_PER_NODE cores of the node" >&2
+        if (( n > CORES_PER_NODE )); then
+            echo "skipping n = $n: more than the $CORES_PER_NODE cores of the node" >&2
             continue
         fi
-        if [ -n "$NR" ] && (( NR % n != 0 && n % NR != 0 )); then
-            echo "warning: n = $n is neither a divisor nor a multiple of Nr = $NR, the radial block Jacobi is skipped"
+        if [ -n "$NR" ] && (( n > NR && n % NR != 0 )); then
+            echo "skipping n = $n: more ranks than Nr = $NR and not a multiple of it, the test would skip the radial block Jacobi"
+            continue
+        fi
+        if [ -n "$NR" ] && (( n < NR && NR % n != 0 )); then
+            echo "warning: n = $n does not divide Nr = $NR, the ranks get unequal numbers of radii"
         fi
         # spread the ranks over all cores of the node (both sockets); the t
-        # threads of a rank take the first t cores of its share
+        # threads of a rank take the first t cores of its share (n need not
+        # divide the node: the last CORES_PER_NODE % n cores stay idle)
         CPUS_PER_TASK=$((CORES_PER_NODE / n))
 
         for t in $THREADS; do
@@ -145,11 +152,16 @@ for sys in $SYSTEMS; do
                 wall=$(echo "$t1 - $t0" | bc -l)
 
                 # "<scale> <label> its N <status> setup X s solve Y s res R err E"
-                grep " its .* setup .* solve " $LOG |
-                    sed -E 's/^(\S+) +(.*\S) +its +([0-9]+) +(\S+) +setup +(\S+) s +solve +(\S+) s +res +(\S+) +err +(.*)$/\1,"\2",\3,\4,\5,\6,\7,\8/' |
-                    while read -r line; do
-                        echo "$sys,$n,$t,$((n * t)),1,$r,$code,$wall,$line" >> $CSV
-                    done
+                lines=$(grep " its .* setup .* solve " $LOG |
+                    sed -E 's/^(\S+) +(.*\S) +its +([0-9]+) +(\S+) +setup +(\S+) s +solve +(\S+) s +res +(\S+) +err +(.*)$/\1,"\2",\3,\4,\5,\6,\7,\8/')
+                # no solver line: still record the run, so skips and crashes show up in the CSV
+                if [ -z "$lines" ]; then
+                    if grep -q "Skipping radial block Jacobi" $LOG; then st=SKIPPED; else st=FAILED; fi
+                    lines=",,,$st,,,,"
+                fi
+                while read -r line; do
+                    echo "$sys,$n,$t,$((n * t)),1,$r,$code,$wall,$line" >> $CSV
+                done <<< "$lines"
                 echo "exit code: $code   wall: ${wall} s"
             done
         done
