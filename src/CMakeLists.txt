@@ -131,7 +131,7 @@ set(dream_equations
     "${PROJECT_SOURCE_DIR}/src/Equations/Scalar/ConstantSPIVelocityPositionTerm.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/SlowingDownFrequency.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/SPIHandler.cpp"
-    "${PROJECT_SOURCE_DIR}/src/Equations/TransportPrescribed.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/src/Equations/TransportPrescribed.cpp"
     "${PROJECT_SOURCE_DIR}/src/Equations/TransportBC.cpp"
     
 )

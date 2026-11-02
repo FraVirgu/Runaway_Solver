@@ -212,35 +212,46 @@ void AdvectionDiffusionTerm::Rebuild(const real_t t, const real_t dt, UnknownQua
         printf("[rebuild]            advection interpolation coefficients (upwind) %17s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
 
     if (log)
-        this->PrintCoefficientNorms();
+        this->PrintCoefficientNorms(dt);
 }
 
 /**
- * Print the size of the advection and diffusion coefficients per unknown,
+ * Print how strongly each row is coupled in r, p and xi relative to its
+ * diagonal. For every cell, with h the cell width in that direction and
+ * each coefficient the mean of |coeff| on the two faces of the cell,
  *
- *   |A| = sum_faces (|F_r| + |F_p| + |F_xi|)                     / N,
- *   |D| = sum_faces (|D_rr| + |D_pp| + |D_pxi| + |D_xip| + |D_xixi|) / N,
+ *   c_r  = dt (|A_r|/dr  + D_rr/dr^2)
+ *   c_p  = dt (|A_p|/dp  + D_pp/dp^2   + D_pxi/(dp dxi))
+ *   c_xi = dt (|A_xi|/dxi + D_xixi/dxi^2 + D_xip/(dp dxi))
  *
- * where N is the number of cells of the unknown (sum over all ranks).
- * Every rank sums the lower faces of the cells it owns (and the upper
- * face of the last cell in each direction), so each face counts once.
+ *   theta_r = c_r / (1 + c_r + c_p + c_xi)
+ *
+ * c_* are dimensionless (rate x dt). theta_r is the fraction of the row
+ * that couples to the neighbouring radii, i.e. what block Jacobi over the
+ * radius drops; it is a scale estimate (metric factors V' are left out).
+ * Printed: the mean of c_r, c_p, c_xi and of theta_r over the N cells of
+ * the unknown (all ranks), and the max of theta_r.
  *
  * Collective: must be called by all ranks.
  */
-void AdvectionDiffusionTerm::PrintCoefficientNorms()
+void AdvectionDiffusionTerm::PrintCoefficientNorms(const real_t dt)
 {
     const bool adv = (this->advectionterms.size() > 0);
     const bool diff = (this->diffusionterms.size() > 0);
     const len_t nr = this->AdvectionTerm::nr;
     const len_t *n1 = this->AdvectionTerm::n1;
     const len_t *n2 = this->AdvectionTerm::n2;
+    Grid *grid = this->AdvectionTerm::grid;
 
-    // [Fr, F1, F2, Drr, D11, D12, D21, D22]
-    real_t s[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    // [c_r, c_p, c_xi, theta_r]
+    real_t s[4] = {0, 0, 0, 0}, thetaMax = 0;
     len_t N = 0, offset = 0;
     for (len_t ir = 0; ir < nr; ir++)
     {
         const len_t np1 = n1[ir], np2 = n2[ir];
+        const real_t dr = grid->GetRadialGrid()->GetDr(ir);
+        const real_t *dp1 = grid->GetMomentumGrid(ir)->GetDp1();
+        const real_t *dp2 = grid->GetMomentumGrid(ir)->GetDp2();
         N += np1 * np2;
         for (len_t j = 0; j < np2; j++)
             for (len_t i = 0; i < np1; i++)
@@ -248,44 +259,57 @@ void AdvectionDiffusionTerm::PrintCoefficientNorms()
                 if (!this->AdvectionTerm::IsLocalRow(offset + j * np1 + i))
                     continue;
 
-                const len_t c = j * np1 + i;         // cell / radial face
+                const len_t c = j * np1 + i;         // cell / lower radial face / lower xi face
                 const len_t f1 = j * (np1 + 1) + i;  // lower p face
-                const bool r_up = (ir == nr - 1), p_up = (i == np1 - 1), xi_up = (j == np2 - 1);
+                const real_t h1 = dp1[i], h2 = dp2[j];
+                // mean of |x| on the lower and upper face of the cell
+                auto m = [](const real_t lo, const real_t hi) { return 0.5 * (fabs(lo) + fabs(hi)); };
+
+                real_t cr = 0, cp = 0, cx = 0;
                 if (adv)
                 {
-                    s[0] += fabs(this->fr[ir][c]) + (r_up ? fabs(this->fr[ir + 1][c]) : 0);
-                    s[1] += fabs(this->f1[ir][f1]) + (p_up ? fabs(this->f1[ir][f1 + 1]) : 0);
-                    s[2] += fabs(this->f2[ir][c]) + (xi_up ? fabs(this->f2[ir][c + np1]) : 0);
+                    cr += m(this->fr[ir][c], this->fr[ir + 1][c]) / dr;
+                    cp += m(this->f1[ir][f1], this->f1[ir][f1 + 1]) / h1;
+                    cx += m(this->f2[ir][c], this->f2[ir][c + np1]) / h2;
                 }
                 if (diff)
                 {
-                    s[3] += fabs(this->drr[ir][c]) + (r_up ? fabs(this->drr[ir + 1][c]) : 0);
-                    s[4] += fabs(this->d11[ir][f1]) + (p_up ? fabs(this->d11[ir][f1 + 1]) : 0);
-                    s[5] += fabs(this->d12[ir][f1]) + (p_up ? fabs(this->d12[ir][f1 + 1]) : 0);
-                    s[6] += fabs(this->d21[ir][c]) + (xi_up ? fabs(this->d21[ir][c + np1]) : 0);
-                    s[7] += fabs(this->d22[ir][c]) + (xi_up ? fabs(this->d22[ir][c + np1]) : 0);
+                    cr += m(this->drr[ir][c], this->drr[ir + 1][c]) / (dr * dr);
+                    cp += m(this->d11[ir][f1], this->d11[ir][f1 + 1]) / (h1 * h1)
+                        + m(this->d12[ir][f1], this->d12[ir][f1 + 1]) / (h1 * h2);
+                    cx += m(this->d22[ir][c], this->d22[ir][c + np1]) / (h2 * h2)
+                        + m(this->d21[ir][c], this->d21[ir][c + np1]) / (h1 * h2);
                 }
+                cr *= dt;
+                cp *= dt;
+                cx *= dt;
+
+                const real_t theta = cr / (1 + cr + cp + cx);
+                s[0] += cr;
+                s[1] += cp;
+                s[2] += cx;
+                s[3] += theta;
+                thetaMax = std::max(thetaMax, theta);
             }
         offset += np1 * np2;
     }
 
-    MPI_Allreduce(MPI_IN_PLACE, s, 8, MPI_DOUBLE, MPI_SUM, PETSC_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, s, 4, MPI_DOUBLE, MPI_SUM, PETSC_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &thetaMax, 1, MPI_DOUBLE, MPI_MAX, PETSC_COMM_WORLD);
 
     PetscMPIInt rank;
     MPI_Comm_rank(PETSC_COMM_WORLD, &rank);
     if (rank != 0)
         return;
 
-    for (len_t k = 0; k < 8; k++)
+    for (len_t k = 0; k < 4; k++)
         s[k] /= N;
 
-    printf("[rebuild]                 norm per unknown (N = %llu): sum_faces |coeff| / N\n", (unsigned long long)N);
-    if (adv)
-        printf("[rebuild]                   |A| = %12.5e    (A_r %.5e, A_p %.5e, A_xi %.5e)\n",
-               s[0] + s[1] + s[2], s[0], s[1], s[2]);
-    if (diff)
-        printf("[rebuild]                   |D| = %12.5e    (D_rr %.5e, D_pp %.5e, D_pxi %.5e, D_xip %.5e, D_xixi %.5e)\n",
-               s[3] + s[4] + s[5] + s[6] + s[7], s[3], s[4], s[5], s[6], s[7]);
+    printf("[rebuild]                 coupling per row (N = %llu, dt = %.3e): dt*(|A|/h + D/h^2), mean over cells\n",
+           (unsigned long long)N, (double)dt);
+    printf("[rebuild]                   c_r = %.5e    c_p = %.5e    c_xi = %.5e\n", s[0], s[1], s[2]);
+    printf("[rebuild]                   theta_r = c_r / (1 + c_r + c_p + c_xi):  mean %.5e    max %.5e\n",
+           s[3], thetaMax);
 }
 
 /**
