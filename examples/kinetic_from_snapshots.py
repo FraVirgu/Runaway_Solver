@@ -80,10 +80,11 @@ BIUNIFORM_RE   = True
 THETASEP       = 0.5
 NTHETASEP_FRAC = 0.75
 
+
 ADV_INTERP = {
     'upwind': DistFunc.AD_INTERP_UPWIND,
     'quick':  DistFunc.AD_INTERP_QUICK,
-}[os.environ.get('ADV', 'upwind').lower()]
+}[os.environ.get('ADV', 'quick').lower()]
 
 # Rechester-Rosenbluth dB/B; DBB=0 switches transport off.
 DBB = float(os.environ.get('DBB', 1e-4))
