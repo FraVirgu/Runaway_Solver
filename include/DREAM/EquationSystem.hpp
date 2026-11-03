@@ -125,6 +125,7 @@ namespace DREAM
 
         CollisionQuantityHandler *GetHotTailCollisionHandler() { return this->cqh_hottail; }
         CollisionQuantityHandler *GetRunawayCollisionHandler() { return this->cqh_runaway; }
+        Solver *GetSolver() { return this->solver; }
 
         PostProcessor *GetPostProcessor() { return this->postProcessor; }
         RunawayFluid *GetREFluid() { return this->REFluid; }

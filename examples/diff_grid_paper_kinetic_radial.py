@@ -163,7 +163,7 @@ E = E_NORM * E_c
 #
 # LEVEL refines all four numbers by 2^LEVEL, so each level is 4x the
 # unknowns. Level 2 is the coarsest that resolves everything above.
-LEVEL = int(os.environ.get('LEVEL', 2))
+LEVEL = int(os.environ.get('LEVEL', 1))
 _f = 2 ** LEVEL
 
 NP_HOT  = 125 * _f          # many p
@@ -177,7 +177,7 @@ NXI_RE  = 100 * _f          # many xi
 # =====================================================================
 # Number of radial cells. Each cell carries a full copy of both momentum
 # grids, so the matrix size scales linearly with NR.
-Nr = int(os.environ.get('NR', 16))
+Nr = int(os.environ.get('NR', 4))
 
 # Minor radius (= wall radius) [m].
 A_MINOR = 0.22

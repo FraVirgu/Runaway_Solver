@@ -539,6 +539,9 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
     solver_timeKeeper->StartTimer(timerCqh);
     if (!this->first_build_constant_term)
     {
+        // Only build the collision quantities on the radii of this rank
+        SetCollisionQuantityLocalRange();
+
         t0 = clk::now();
         if (this->cqh_hottail != nullptr)
             this->cqh_hottail->Rebuild();
@@ -660,6 +663,36 @@ void Solver::RebuildTerms(const real_t t, const real_t dt)
 }
 
 /**
+ * Restrict the collision quantities of each kinetic grid to the radii
+ * whose distribution-function rows are owned by this rank. A grid whose
+ * distribution function is not in the matrix keeps all radii.
+ *
+ * This reallocates the collision quantities on their next Rebuild(), so
+ * it should only be called once the matrix exists, not every time step.
+ */
+void Solver::SetCollisionQuantityLocalRange()
+{
+    FVM::BlockMatrix *bm = this->GetMatrix();
+    if (bm == nullptr)
+        return;
+
+    PetscInt rstart, nloc;
+    bm->GetOwnershipRange(&rstart, &nloc);
+
+    auto setRange = [&](CollisionQuantityHandler *cqh, const std::string &name)
+    {
+        if (cqh == nullptr || !unknowns->HasUnknown(name))
+            return;
+        const len_t id = unknowns->GetUnknownID(name);
+        if (!unknownToMatrixMapping.count(id))
+            return;
+        cqh->SetLocalRange(rstart, rstart + nloc, bm->GetOffset(unknownToMatrixMapping[id]));
+    };
+    setRange(this->cqh_hottail, OptionConstants::UQTY_F_HOT);
+    setRange(this->cqh_runaway, OptionConstants::UQTY_F_RE);
+}
+
+/**
  * Rebuild all equation terms in the equation system for
  * the specified time.
  *
@@ -705,6 +738,9 @@ void Solver::RebuildTermsTransientAdvectionDiffusion(const real_t t, const real_
     solver_timeKeeper->StartTimer(timerCqh);
     if (!this->first_build_constant_term)
     {
+        // Only build the collision quantities on the radii of this rank
+        SetCollisionQuantityLocalRange();
+
         t0 = clk::now();
         if (this->cqh_hottail != nullptr)
             this->cqh_hottail->Rebuild();

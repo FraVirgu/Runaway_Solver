@@ -10,7 +10,7 @@ set(fvm_core
     "${PROJECT_SOURCE_DIR}/fvm/NormEvaluator.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/UnknownQuantity.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/UnknownQuantityHandler.cpp"
-    "${PROJECT_SOURCE_DIR}/fvm/QuantityData.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/QuantityData.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Solvers/MILU.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Solvers/MIILU.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Solvers/MIAMG.cpp"

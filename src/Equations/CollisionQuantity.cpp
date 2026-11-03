@@ -2,6 +2,7 @@
  * Implementation of a class from which the Coulomb logarithms and collision frequencies are derived.
  */
 
+#include <algorithm>
 #include "DREAM/Equations/CollisionQuantity.hpp"
 //#include "DREAM/Constants.hpp"
 //#include "DREAM/Settings/OptionConstants.hpp"
@@ -71,6 +72,7 @@ void CollisionQuantity::Rebuild(){
             np2_store = 1;
         else
             np2_store = mg->GetNp2();
+        SetLocalRadii();
         // We should Deallocate before we update nr, nZ etc. so that deletions occurs with parameters of previous iteration
         AllocateCollisionQuantities(); 
         
@@ -141,12 +143,100 @@ void CollisionQuantity::AllocateCollisionQuantities(){
 
 
 /**
- * Allocate quantity on one grid
+ * Allocate quantity on one grid. The pointer table spans all 'nr' radii,
+ * so that the quantity is indexed with the global radial index, but only
+ * the radii [irlo, irhi) owned by this rank are allocated (the others
+ * are nullptr).
+ *
+ * NOTE: on the radial flux grid (nr+1 radii) the upper face 'irhi' of
+ * the owned cells is not allocated. It is not needed as long as
+ * buildOnlyF1F2 = true.
  */
 void CollisionQuantity::AllocateCollisionQuantity(real_t **&collisionQuantity, len_t nr, len_t np1, len_t np2){
     collisionQuantity = new real_t*[nr];
     for(len_t ir = 0; ir<nr; ir++)
-        collisionQuantity[ir] = new real_t[np1*np2]; 
+        collisionQuantity[ir] = (ir>=irlo && ir<irhi) ? new real_t[np1*np2] : nullptr;
+}
+
+
+/**
+ * Set the range of radii [irlo, irhi) containing matrix rows owned by
+ * this rank (all radii unless 'SetLocalRange()' has been called). Both
+ * are 0 if the rank owns no row of the quantity.
+ */
+void CollisionQuantity::SetLocalRadii(){
+    irlo = irhi = 0;
+
+    len_t i1lo, i1hi, i2lo, i2hi;
+    bool found = false;
+    for(len_t ir = 0; ir<nr; ir++){
+        if(GetLocalRange(ir, i1lo, i1hi, i2lo, i2hi)){
+            if(!found){
+                irlo = ir;
+                found = true;
+            }
+            irhi = ir+1;
+        }
+    }
+}
+
+
+/**
+ * Translate the matrix rows owned by this rank (as given to
+ * 'SetLocalRange()') into the cells they cover at radius 'ir'.
+ *
+ * The cells of a radius are ordered as 'j*np1 + i' (i = index in the
+ * first momentum coordinate, j = index in the second) and the radii
+ * follow each other, so a rank owns a contiguous run of them which may
+ * start and end in the middle of a line of constant j. The range
+ * returned is the smallest box [i1lo,i1hi) x [i2lo,i2hi) containing
+ * that run: all of np1 when the run spans several j, only the owned
+ * part of the line when it stays within a single j.
+ *
+ * Unlike 'FVM::EquationTerm::GetLocalRange()', the momentum grid is
+ * assumed to be the same at all radii (see 'mg'), so radius 'ir' starts
+ * at cell ir*np1*np2.
+ *
+ * To cover the faces of these cells on a flux grid, extend the
+ * corresponding upper bound by one (i < i1hi+1 or j < i2hi+1).
+ *
+ * ir:         Radial index.
+ * i1lo, i1hi: On return, range of the first momentum index.
+ * i2lo, i2hi: On return, range of the second momentum index.
+ *
+ * RETURNS false if this rank owns no cell at this radius (the ranges
+ * are then empty).
+ */
+bool CollisionQuantity::GetLocalRange(
+    const len_t ir, len_t &i1lo, len_t &i1hi, len_t &i2lo, len_t &i2hi
+) const {
+    const PetscInt n1 = (PetscInt)np1;
+    const PetscInt ncells = n1*(PetscInt)np2;
+
+    // Index in the quantity of the first cell at this radius
+    const PetscInt first = (PetscInt)ir * ncells;
+
+    // Owned cells at this radius, [lo, hi) in the 'j*np1 + i' ordering
+    const PetscInt lo = std::max<PetscInt>(0, rstart - rowOffset - first);
+    const PetscInt hi = std::min<PetscInt>(ncells, rend - rowOffset - first);
+
+    if (lo >= hi) {
+        i1lo = i1hi = i2lo = i2hi = 0;
+        return false;
+    }
+
+    i2lo = (len_t)(lo / n1);
+    i2hi = (len_t)((hi-1) / n1) + 1;
+
+    if (i2hi - i2lo == 1) {
+        i1lo = (len_t)(lo % n1);
+        i1hi = (len_t)((hi-1) % n1) + 1;
+    } else {
+        i1lo = 0;
+        i1hi = np1;
+    }
+
+    return true;
 }
 
 

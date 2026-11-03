@@ -39,6 +39,14 @@ add_executable(testkinetichypreradius
 target_link_libraries(testkinetichypreradius PUBLIC dream)
 set_target_properties(testkinetichypreradius PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 
+# Collision quantities after their first rebuild, distributed over the
+# ranks by radius: saved in global order to compare serial and parallel runs
+add_executable(testcollisionquantity
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/iface/TestCollisionQuantity.cpp"
+)
+target_link_libraries(testcollisionquantity PUBLIC dream)
+set_target_properties(testcollisionquantity PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+
 # Previous version of the radius test (one block per radius, no ASM scan)
 add_executable(oldtestkinetichypreradius
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/iface/old_testKineticHypreRadius.cpp"

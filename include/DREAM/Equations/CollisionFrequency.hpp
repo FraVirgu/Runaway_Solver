@@ -10,7 +10,19 @@ namespace DREAM {
         void InitializeGSLWorkspace();
         void DeallocateGSL();
 
-        void SetPartialContributions(FVM::fluxGridType fluxGridType);
+        // Stored factors of the collision frequency on one flux grid, from
+        // which the partial contributions are evaluated on the fly
+        struct gridTerms {
+            real_t *const* nColdTerm;
+            const real_t *preFactor, *ionTerm, *screenedTerm, *stoppingTerm, *bremsTerm;
+            real_t *const* lnLee;
+            real_t *const* lnLei;
+            len_t n1, n2;   // size of the flux grid
+            len_t zStride;  // stride between charge states in the momentum-dependent factors
+        };
+        gridTerms GetGridTerms(FVM::fluxGridType) const;
+        real_t evaluateNColdPartial(const gridTerms&, len_t ir, len_t pind, len_t pindStore) const;
+        real_t evaluateNiPartial(const gridTerms&, len_t ir, len_t pind, len_t pindStore, len_t indZ, real_t ntarget, real_t &lnLContrib) const;
 
     protected:
         bool hasIonTerm;
@@ -24,6 +36,14 @@ namespace DREAM {
         real_t **ionDensities = nullptr;
         real_t *Zs            = nullptr;
         real_t **ionIndex     = nullptr;
+        len_t *ionIZ          = nullptr; // ion species of charge state indZ
+        len_t *ionZ0          = nullptr; // charge of charge state indZ
+
+        // Derivatives of lnLambda with respect to the ion densities,
+        // allocated on the radii owned by this rank (size nzs)
+        real_t **lnLEE_partialNi = nullptr;
+        real_t **lnLEI_partialNi = nullptr;
+        void SetLnLambdaPartialNi();
 
         real_t *preFactor     = nullptr;
         real_t *preFactor_fr  = nullptr;
@@ -62,27 +82,6 @@ namespace DREAM {
         real_t *bremsTerm_f2 = nullptr;
         virtual real_t evaluateBremsstrahlungTermAtP(len_t iz, len_t Z0, real_t p, OptionConstants::eqterm_bremsstrahlung_mode brems_mode) = 0;
 
-        real_t *ionPartialContribution    = nullptr;
-        real_t *ionPartialContribution_fr = nullptr;
-        real_t *ionPartialContribution_f1 = nullptr;
-        real_t *ionPartialContribution_f2 = nullptr;
-        real_t *ionLnLambdaPartialContribution    = nullptr;
-        real_t *ionLnLambdaPartialContribution_fr = nullptr;
-        real_t *ionLnLambdaPartialContribution_f1 = nullptr;
-        real_t *ionLnLambdaPartialContribution_f2 = nullptr;
-
-        real_t *nColdPartialContribution    = nullptr;
-        real_t *nColdPartialContribution_fr = nullptr;
-        real_t *nColdPartialContribution_f1 = nullptr;
-        real_t *nColdPartialContribution_f2 = nullptr;
-
-        real_t *TColdPartialContribution    = nullptr;
-        real_t *TColdPartialContribution_fr = nullptr;
-        real_t *TColdPartialContribution_f1 = nullptr;
-        real_t *TColdPartialContribution_f2 = nullptr;
-
-        real_t *fHotPartialContribution_f1 = nullptr;
-
         real_t *atomicParameter = nullptr; // size nzs. Constant term
 
         // Scaled modified Bessel functions of the first kind
@@ -114,11 +113,6 @@ namespace DREAM {
         virtual void RebuildConstantTerms() override;
         virtual real_t GetAtomicParameter(len_t iz, len_t Z0) = 0;
 
-        void SetNColdPartialContribution(real_t **nColdTerm,real_t *preFactor, real_t *const* lnLee, len_t nr, len_t np1, len_t np2, real_t *&partQty);
-        void SetNiPartialContribution(real_t **nColdTerm, real_t *ionTerm, real_t *screenedTerm, real_t *stoppingTerm, real_t *bremsTerm, real_t *preFactor, real_t *const* lnLee,  real_t *const* lnLei, len_t nr, len_t np1, len_t np2, real_t *&partQty, real_t *&lnLambdaContrib);
-        void SetTColdPartialContribution(real_t **nColdTerm, real_t *ionTerm, real_t *preFactor, real_t *const* lnLee, const real_t *pIn, len_t nr, len_t np1, len_t np2, real_t *&TColdPartialContribution);
-        void SetNonlinearPartialContribution(CoulombLogarithm *lnLambda, real_t *&partQty);
-
         virtual void calculateIsotropicNonlinearOperatorMatrix() = 0;
         
         virtual void AllocatePartialQuantities() override;
@@ -130,11 +124,6 @@ namespace DREAM {
         virtual void AssembleQuantity(real_t **&collisionQuantity, len_t nr, len_t np1, len_t np2, FVM::fluxGridType) override;
 
         real_t GetNTarget(len_t ir, bool isNonScreened);
-
-        const real_t* GetNColdPartialContribution(FVM::fluxGridType) const;
-        const real_t* GetNiPartialContribution(FVM::fluxGridType, real_t **lnLContrib=nullptr) const;
-        const real_t* GetTColdPartialContribution(FVM::fluxGridType)const;
-        const real_t* GetNonlinearPartialContribution(FVM::fluxGridType)const;
     public:
         CollisionFrequency(FVM::Grid *g, FVM::UnknownQuantityHandler *u, IonHandler *ih,  
                 CoulombLogarithm *lnLee,CoulombLogarithm *lnLei,
@@ -143,8 +132,7 @@ namespace DREAM {
 
         void RebuildRadialTerms();
 
-        void AddNonlinearContribution();
-        const real_t *GetUnknownPartialContribution(len_t id_unknown,FVM::fluxGridType) const;
+        real_t GetUnknownPartialContribution(len_t id_unknown, FVM::fluxGridType, len_t ir, len_t i, len_t j, len_t n);
         virtual real_t evaluateAtP(len_t ir, real_t p, struct collqty_settings *inSettings) override;
         virtual real_t evaluatePartialAtP(len_t ir, real_t p, len_t derivId, len_t nMultiple, struct collqty_settings *inSettings) override;
         using CollisionQuantity::evaluateAtP;

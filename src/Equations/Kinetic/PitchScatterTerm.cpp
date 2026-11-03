@@ -98,10 +98,7 @@ void PitchScatterTerm::SetPartialDiffusionTerm(len_t derivId, len_t nMultiples){
 
     const len_t nr = grid->GetNr();
 
-    // Get jacobian of the collision frequency
-
-    const real_t *dNuD_f1 = nuD->GetUnknownPartialContribution(derivId, FVM::FLUXGRIDTYPE_P1);
-    const real_t *dNuD_f2 = nuD->GetUnknownPartialContribution(derivId, FVM::FLUXGRIDTYPE_P2);
+    // The jacobian of the collision frequency is evaluated on the fly
 
     bool gridtypePXI        = (gridtype == OptionConstants::MOMENTUMGRID_TYPE_PXI);
     bool gridtypePPARPPERP  = (gridtype == OptionConstants::MOMENTUMGRID_TYPE_PPARPPERP);
@@ -109,8 +106,6 @@ void PitchScatterTerm::SetPartialDiffusionTerm(len_t derivId, len_t nMultiples){
     real_t xi0, ppar0, pperp0;
     const real_t *xiBAvg_f1, *xiBAvg_f2;
 
-    len_t offset1 = 0;
-    len_t offset2 = 0;
     for(len_t n = 0; n < nMultiples; n++){
         for (len_t ir = 0; ir < nr; ir++) {
             auto *mg = grid->GetMomentumGrid(ir);
@@ -122,6 +117,12 @@ void PitchScatterTerm::SetPartialDiffusionTerm(len_t derivId, len_t nMultiples){
             if ( gridtypePXI && (np2 == 1) ){
                 continue;
             }
+
+            // The collision frequency is only available on the radii of this
+            // rank (elsewhere the derivative is left at zero)
+            len_t i1lo, i1hi, i2lo, i2hi;
+            if (!GetLocalRange(ir, i1lo, i1hi, i2lo, i2hi))
+                continue;
             
             // Retrieves the average {(Bmin/B)(xi^2/xi0^2)} on p2 flux grid. 
             xiBAvg_f2 = grid->GetBA_xi2OverB_f2(ir);
@@ -129,7 +130,7 @@ void PitchScatterTerm::SetPartialDiffusionTerm(len_t derivId, len_t nMultiples){
             for (len_t j = 0; j < np2+1; j++) {
                 for (len_t i = 0; i < np1; i++) {
                     
-                    commonFactor_f2 = 0.5 * xiBAvg_f2[j*np1+i]* dNuD_f2[offset2 + j*np1 + i];
+                    commonFactor_f2 = 0.5 * xiBAvg_f2[j*np1+i]* nuD->GetUnknownPartialContribution(derivId, FVM::FLUXGRIDTYPE_P2, ir, i, j, n);
                     if (gridtypePXI) {
                         xi0 = mg->GetP2_f(j);
                         dD22(ir,i,j,n) =  commonFactor_f2 * (1 - xi0*xi0) ;
@@ -153,7 +154,7 @@ void PitchScatterTerm::SetPartialDiffusionTerm(len_t derivId, len_t nMultiples){
                 xiBAvg_f1 = grid->GetBA_xi2OverB_f1(ir);
                 for (len_t j = 0; j < np2; j++) {
                     for (len_t i = 0; i < np1+1; i++) {
-                        commonFactor_f1 = 0.5 * xiBAvg_f1[j*(np1+1)+i] *  dNuD_f1[offset1 + j*(np1+1) + i];
+                        commonFactor_f1 = 0.5 * xiBAvg_f1[j*(np1+1)+i] *  nuD->GetUnknownPartialContribution(derivId, FVM::FLUXGRIDTYPE_P1, ir, i, j, n);
                         ppar0 = mg->GetP1_f(i);
                         pperp0 = mg->GetP2(j);
                         dD11(ir,i,j,n) =  commonFactor_f1 * pperp0*pperp0;
@@ -162,9 +163,6 @@ void PitchScatterTerm::SetPartialDiffusionTerm(len_t derivId, len_t nMultiples){
                 }
             }
 
-      
-            offset1 += (np1+1)*np2;
-            offset2 += np1*(np2+1);  
         }
     }
 }

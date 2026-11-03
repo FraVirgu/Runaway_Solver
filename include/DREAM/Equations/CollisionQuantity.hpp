@@ -3,6 +3,7 @@
 
 namespace DREAM { class CollisionQuantity; }
 
+#include <limits>
 #include "FVM/Grid/Grid.hpp"
 #include "FVM/UnknownQuantityHandler.hpp"
 #include "DREAM/IonHandler.hpp"
@@ -40,9 +41,18 @@ namespace DREAM {
         void AllocateCollisionQuantities();
         void DeallocateCollisionQuantity(real_t **&collisionQuantity, len_t nr);
         bool parametersHaveChanged();
-        
+
+        // Matrix rows owned by this rank, and the first matrix row of the
+        // differentiated quantity. The defaults select the whole quantity.
+        PetscInt rstart = 0, rend = std::numeric_limits<PetscInt>::max(), rowOffset = 0;
+
+        void SetLocalRadii();
+
     protected:
         bool gridRebuilt = true;
+        // Radii [irlo, irhi) containing matrix rows owned by this rank;
+        // only these are allocated in the collision quantities
+        len_t irlo = 0, irhi = 0;
         // XXX we assume explicitly that CollisionQuantities have
         // the same MomentumGrid at all radii 
         FVM::MomentumGrid *mg;
@@ -71,7 +81,10 @@ namespace DREAM {
         virtual void RebuildConstantTerms()=0;
         virtual void AssembleQuantity(real_t **&collisionQuantity, len_t nr, len_t np1, len_t np2, FVM::fluxGridType) = 0;
         void DeallocateCollisionQuantities();
-        
+
+        // The cells at radius 'ir' whose matrix rows are owned by this rank
+        bool GetLocalRange(const len_t ir, len_t &i1lo, len_t &i1hi, len_t &i2lo, len_t &i2hi) const;
+
         real_t **collisionQuantity    = nullptr;
         real_t **collisionQuantity_fr = nullptr;
         real_t **collisionQuantity_f1 = nullptr;
@@ -84,6 +97,17 @@ namespace DREAM {
         virtual ~CollisionQuantity();
         void Rebuild();
         void GridRebuilt(){gridRebuilt=true;}
+
+        // Restrict to the matrix rows [rs, re) owned by this rank, where
+        // 'off' is the first matrix row of the differentiated quantity
+        void SetLocalRange(const PetscInt rs, const PetscInt re, const PetscInt off)
+        {
+            rstart = rs;
+            rend = re;
+            rowOffset = off;
+            // A new range changes which radii are allocated
+            gridRebuilt = true;
+        }
        
         const real_t  GetValue(const len_t ir, const len_t i, const len_t j) const 
             {return this->collisionQuantity[ir][np1*j+i]; }
