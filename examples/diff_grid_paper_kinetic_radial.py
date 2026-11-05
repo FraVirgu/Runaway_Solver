@@ -237,7 +237,7 @@ ADV_INTERP = {
 # honest test of a preconditioner. (The paper instead shrinks dt with
 # refinement: 1e-5 at 1.4M cells, 1e-6 at 4.4M -- a milder test.)
 T_FINAL_NORM = 0.5
-Nt   = 500
+Nt   = 20
 tMax = T_FINAL_NORM * tau_c
 
 # =====================================================================
@@ -491,7 +491,7 @@ if AR != 0:
 # ---------------------------------------------------------------------
 ds.solver.setType(Solver.LINEAR_IMPLICIT)
 ds.solver.preconditioner.setEnabled(False)
-ds.solver.setLinearSolver(Solver.LINEAR_SOLVER_AMG)
+ds.solver.setLinearSolver(Solver.LINEAR_SOLVER_RADIAL_BJ)
 
 ds.other.include('fluid', 'nu_s', 'nu_D')
 
