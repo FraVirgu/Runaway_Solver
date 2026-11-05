@@ -20,6 +20,8 @@ namespace DREAM::FVM {
         // 'ifirst' of the quantity (so xn[k] is element ifirst+k)
         real_t *xn;
         len_t nloc = 0, ifirst = 0;
+        // Range of the quantity for which the weights were allocated and set
+        len_t nlocWeights = 0, ifirstWeights = 0;
 
         // Matrix rows owned by this rank, and the first matrix row of the
         // differentiated quantity. The defaults select the whole quantity.
@@ -30,6 +32,10 @@ namespace DREAM::FVM {
         len_t GetFirstLocalElement() const { return this->ifirst; }
         len_t GetNumberOfLocalElements() const { return this->nloc; }
 
+        // Only the weights of the elements owned by this rank are stored:
+        // weights[k] belongs to element GetFirstLocalElement()+k
+        virtual len_t GetNumberOfWeightsElements() override { return this->nloc; }
+
         virtual bool TermDependsOnUnknowns() override {return false;}
         virtual bool AddWeightsJacobian(const len_t, const len_t, Matrix*, const real_t*) override {return false;}
     public:
@@ -37,6 +43,9 @@ namespace DREAM::FVM {
         
         void SetLocalRange(const PetscInt rs, const PetscInt re, const PetscInt off)
             { rstart = rs; rend = re; rowOffset = off; }
+
+        // Number of weights stored by this rank (0 before the first rebuild)
+        len_t GetNumberOfStoredWeights() const { return hasBeenInitialized ? nlocWeights : 0; }
 
         virtual void Rebuild(const real_t, const real_t dt, UnknownQuantityHandler *uqty) override;
         virtual void SetMatrixElements(Matrix*, real_t*) override;

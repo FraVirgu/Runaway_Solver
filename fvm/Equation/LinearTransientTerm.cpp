@@ -33,11 +33,14 @@ void LinearTransientTerm::Rebuild(const real_t, const real_t dt, UnknownQuantity
         this->rstart, this->rend, this->rowOffset, &this->nloc, &this->ifirst
     );
 
-    if(!hasBeenInitialized){
+    // The weights cover the elements owned by this rank, so they are
+    // reallocated whenever that range changes
+    if(!hasBeenInitialized || nloc != nlocWeights || ifirst != ifirstWeights){
         InitializeWeights();
         hasBeenInitialized = true;
-    }
-    if(TermDependsOnUnknowns()) 
+        nlocWeights   = nloc;
+        ifirstWeights = ifirst;
+    } else if(TermDependsOnUnknowns())
         SetWeights();
 }
 
@@ -67,13 +70,13 @@ void LinearTransientTerm::SetMatrixElements(Matrix *mat, real_t *rhs) {
     // Only the elements (matrix rows) owned by this rank
     for (len_t k = 0; k < this->nloc; k++) {
         const len_t i = this->ifirst + k;
-        mat->SetElement(i, i, weights[i]/this->dt, ADD_VALUES);
+        mat->SetElement(i, i, weights[k]/this->dt, ADD_VALUES);
     }
 
     if (rhs != nullptr)
         for (len_t k = 0; k < this->nloc; k++) {
             const len_t i = this->ifirst + k;
-            rhs[i] -= weights[i]*this->xn[k] / this->dt;
+            rhs[i] -= weights[k]*this->xn[k] / this->dt;
         }
 }
 
@@ -94,7 +97,7 @@ void LinearTransientTerm::SetVectorElements(real_t *vec, const real_t *xnp1) {
     // Only the elements owned by this rank
     for (len_t k = 0; k < this->nloc; k++) {
         const len_t i = this->ifirst + k;
-        vec[i] += weights[i]*(xnp1[i] - xn[k]) / this->dt;
+        vec[i] += weights[k]*(xnp1[i] - xn[k]) / this->dt;
     }
 }
 

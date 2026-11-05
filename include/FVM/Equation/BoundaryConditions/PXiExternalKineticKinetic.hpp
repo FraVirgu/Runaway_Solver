@@ -29,6 +29,14 @@ namespace DREAM::FVM::BC {
             std::function<void(const len_t, const len_t, const real_t)>,
             const real_t *const*, const real_t *const*, const real_t *const*
         );
+        // Coefficient on the upper p boundary of xi line j at radius ir
+        // (an empty function if the coefficient is not present)
+        typedef std::function<real_t(const len_t ir, const len_t j)> boundaryCoefficient;
+        void __SetElements(
+            std::function<void(const len_t, const len_t, const real_t)>,
+            std::function<void(const len_t, const len_t, const real_t)>,
+            boundaryCoefficient, boundaryCoefficient
+        );
 
     public:
         PXiExternalKineticKinetic(

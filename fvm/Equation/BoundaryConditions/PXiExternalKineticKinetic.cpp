@@ -184,18 +184,46 @@ void PXiExternalKineticKinetic::__SetElements(
     std::function<void(const len_t, const len_t, const real_t)> fLow,
     std::function<void(const len_t, const len_t, const real_t)> fUpp
 ) {
-    const real_t *const* Ap  = oprtr->GetAdvectionCoeff1();
-    const real_t *const* Dpp = oprtr->GetDiffusionCoeff11();
-    const real_t *const* Dpx = oprtr->GetDiffusionCoeff12();
+    // The coefficients of the lower grid on its upper p boundary, collected
+    // on every rank by the advection-diffusion term (each rank only stores
+    // the coefficients of the cells it owns)
+    const AdvectionDiffusionTerm *adt = oprtr->GetAdvectionDiffusion();
+    boundaryCoefficient Ap, Dpp;
+    if (adt != nullptr) {
+        Ap  = [adt](const len_t ir, const len_t j) { return adt->GetUpperBoundaryF1(ir, j); };
+        Dpp = [adt](const len_t ir, const len_t j) { return adt->GetUpperBoundaryD11(ir, j); };
+    }
 
-    this->__SetElements(fLow, fUpp, Ap, Dpp, Dpx);
+    this->__SetElements(fLow, fUpp, Ap, Dpp);
 }
 
+/**
+ * Same as above, with the coefficients (on all faces of the lower grid)
+ * given explicitly.
+ */
 void PXiExternalKineticKinetic::__SetElements(
     std::function<void(const len_t, const len_t, const real_t)> fLow,
     std::function<void(const len_t, const len_t, const real_t)> fUpp,
     const real_t *const* cAp, const real_t *const* cDpp,
     const real_t *const* /*cDpx*/
+) {
+    // Coefficient on the last p1 face of xi line j at radius ir
+    auto onBoundary = [this](const real_t *const* c) -> boundaryCoefficient {
+        if (c == nullptr)
+            return boundaryCoefficient();
+        return [this,c](const len_t ir, const len_t j) {
+            const len_t lnp = this->lowerGrid->GetMomentumGrid(ir)->GetNp1();
+            return c[ir][j*(lnp+1)+lnp];
+        };
+    };
+
+    this->__SetElements(fLow, fUpp, onBoundary(cAp), onBoundary(cDpp));
+}
+
+void PXiExternalKineticKinetic::__SetElements(
+    std::function<void(const len_t, const len_t, const real_t)> fLow,
+    std::function<void(const len_t, const len_t, const real_t)> fUpp,
+    boundaryCoefficient cAp, boundaryCoefficient cDpp
 ) {
     const len_t nr = this->grid->GetNr();
     len_t loffset = 0, uoffset = 0;
@@ -220,9 +248,7 @@ void PXiExternalKineticKinetic::__SetElements(
             *ldxi  = lmg->GetDp2(),
             *udxi  = umg->GetDp2();
 
-        const real_t *Ap  = (cAp!=nullptr  ? cAp[ir] : nullptr);
-        const real_t *Dpp = (cDpp!=nullptr ? cDpp[ir] : nullptr);
-        //const real_t *Dpx = (cDpx!=nullptr ? cDpx[ir] : nullptr);
+        const bool hasAp = (bool)cAp, hasDpp = (bool)cDpp;
 
         const real_t
             *lVp   = this->lowerGrid->GetVp(ir),
@@ -233,6 +259,9 @@ void PXiExternalKineticKinetic::__SetElements(
         // j = xi index on lower grid
         // J = xi index on upper grid
         for (len_t j = 0, Jj = 0; j < lnxi; j++) {
+            // Coefficients on the upper p boundary of this xi line
+            const real_t Ap  = hasAp  ? cAp(ir, j)  : 0;
+            const real_t Dpp = hasDpp ? cDpp(ir, j) : 0;
 
             // Locate correct J (first J such that uxi[J] >= lxi[j])...
             while (uxi[Jj] < lxi[j] && Jj < unxi-1)
@@ -280,8 +309,8 @@ void PXiExternalKineticKinetic::__SetElements(
 
                 // Interpolation coefficients...
                 real_t delta1, delta2;
-                if (Ap != nullptr)
-                    delta2 = Ap[lidx_f] > 0 ? 1.0 : 0.0;
+                if (hasAp)
+                    delta2 = Ap > 0 ? 1.0 : 0.0;
 
                 if (Jj == 0)
                     delta1 = 1.0;
@@ -292,24 +321,24 @@ void PXiExternalKineticKinetic::__SetElements(
 
                 //////////////////////
                 // Advection
-                if (Ap != nullptr)
-                    fLow(fidx, loffset+lidx, delta2*Ap[lidx_f]*Vd);
+                if (hasAp)
+                    fLow(fidx, loffset+lidx, delta2*Ap*Vd);
 
-                if (delta1 != 0 && Ap != nullptr)
-                    fUpp(fidx, uoffset+uidx, (1-delta2)*delta1*Ap[lidx_f]*Vd);
-                if (delta1 != 1 && Ap != nullptr)
-                    fUpp(fidx, uoffset+uidx_m, (1-delta2)*(1-delta1)*Ap[lidx_f]*Vd);
+                if (delta1 != 0 && hasAp)
+                    fUpp(fidx, uoffset+uidx, (1-delta2)*delta1*Ap*Vd);
+                if (delta1 != 1 && hasAp)
+                    fUpp(fidx, uoffset+uidx_m, (1-delta2)*(1-delta1)*Ap*Vd);
 
                 //////////////////////
                 // P-P diffusion
                 real_t dp = up[0]-lp[lnp-1];
-                if (Dpp != nullptr)
-                    fLow(fidx, loffset+lidx, Dpp[lidx_f]*Vd/dp);
+                if (hasDpp)
+                    fLow(fidx, loffset+lidx, Dpp*Vd/dp);
 
-                if (delta1 != 0 && Dpp != nullptr)
-                    fUpp(fidx, uoffset+uidx, -delta1*Dpp[lidx_f]*Vd/dp);
-                if (delta1 != 1 && Dpp != nullptr)
-                    fUpp(fidx, uoffset+uidx_m, -(1-delta1)*Dpp[lidx_f]*Vd/dp);
+                if (delta1 != 0 && hasDpp)
+                    fUpp(fidx, uoffset+uidx, -delta1*Dpp*Vd/dp);
+                if (delta1 != 1 && hasDpp)
+                    fUpp(fidx, uoffset+uidx_m, -(1-delta1)*Dpp*Vd/dp);
 
                 //////////////////////
                 // P-XI diffusion (TODO)

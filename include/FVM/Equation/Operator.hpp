@@ -123,6 +123,7 @@ namespace DREAM::FVM {
         len_t GetNumberOfNonZerosPerRow_jac() const;
         PredeterminedParameter *GetPredetermined() { return this->predetermined; }
         AdvectionDiffusionTerm *GetAdvectionDiffusion() const { return this->adterm; }
+        const std::vector<LinearTransientTerm*> &GetTransientTerms() const { return this->transientTerms; }
         /**
          * Returns 'true' if all terms of this operator are
          * 'PredeterminedParameter's.

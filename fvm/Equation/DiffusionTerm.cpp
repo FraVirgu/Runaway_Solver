@@ -2,6 +2,8 @@
  * Implementation of a general diffusion term.
  */
 
+#include <algorithm>
+#include <vector>
 #include "FVM/config.h"
 #include "FVM/Equation/DiffusionTerm.hpp"
 #include "FVM/Grid/Grid.hpp"
@@ -37,48 +39,32 @@ DiffusionTerm::~DiffusionTerm() {
 }
 
 /**
- * Allocate new memory for the diffusion coefficients.
+ * Allocate new memory for the diffusion coefficients (on
+ * the lines stored by this rank, see 'AllocateCoefficientData()').
  */
 void DiffusionTerm::AllocateCoefficients() {
+    AllocateCoefficientTables();
+    AllocateCoefficientData();
+}
+
+/**
+ * Allocate the tables of rows of the diffusion coefficients (with no
+ * data: see 'AllocateCoefficientData()'), and the interpolation
+ * coefficients to the radial flux grid.
+ *
+ * The tables are kept for the lifetime of this term, so that terms which
+ * share these coefficients (see 'SetCoefficients()') see the rows of any
+ * later allocation of the data.
+ */
+void DiffusionTerm::AllocateCoefficientTables() {
     if (!this->coefficientsShared)
         DeallocateCoefficients();
-    
-    this->drr = new real_t*[nr+1];
-    this->d11 = new real_t*[nr];
-    this->d12 = new real_t*[nr];
-    this->d21 = new real_t*[nr];
-    this->d22 = new real_t*[nr];
 
-    len_t
-        nElements_fr = n1[nr-1]*n2[nr-1],
-        nElements_f1 = 0,
-        nElements_f2 = 0;
-
-    for (len_t i = 0; i < nr; i++) {
-        nElements_fr += n1[i]*n2[i];
-        nElements_f1 += (n1[i]+1)*n2[i];
-        nElements_f2 += n1[i]*(n2[i]+1);
-    }
-
-    this->drr[0] = new real_t[nElements_fr];
-    this->d11[0] = new real_t[nElements_f1];
-    this->d12[0] = new real_t[nElements_f1];
-    this->d22[0] = new real_t[nElements_f2];
-    this->d21[0] = new real_t[nElements_f2];
-
-    for (len_t i = 1; i < nr; i++) {
-        this->drr[i] = this->drr[i-1] + (n1[i-1]*n2[i-1]);
-        this->d11[i] = this->d11[i-1] + ((n1[i-1]+1)*n2[i-1]);
-        this->d12[i] = this->d12[i-1] + ((n1[i-1]+1)*n2[i-1]);
-        this->d22[i] = this->d22[i-1] + (n1[i-1]*(n2[i-1]+1));
-        this->d21[i] = this->d21[i-1] + (n1[i-1]*(n2[i-1]+1));
-    }
-
-    // XXX Here we explicitly assume that n1[i] = n1[i+1]
-    // at all radii
-    this->drr[nr]  = this->drr[nr-1]  + (n1[nr-1]*n2[nr-1]);
-
-    this->ResetCoefficients();
+    this->drr = new real_t*[nr+1]();
+    this->d11 = new real_t*[nr]();
+    this->d12 = new real_t*[nr]();
+    this->d21 = new real_t*[nr]();
+    this->d22 = new real_t*[nr]();
 
     // Set interpolation coefficients for unknowns to radial flux grid
     this->deltaRadialFlux = new real_t[nr+1];
@@ -92,6 +78,105 @@ void DiffusionTerm::AllocateCoefficients() {
     }
 
     this->coefficientsShared = false;
+}
+
+/**
+ * Allocate the diffusion coefficients, set to 0, on the lines that
+ * contain faces of the cells owned by this rank (see
+ * 'EquationTerm::GetStoredLines()'): drr[ir], d11[ir], ... are nullptr
+ * at the other radii, and are indexed with the global (i, j) on the
+ * stored lines.
+ */
+void DiffusionTerm::AllocateCoefficientData() {
+    DeallocateCoefficientData();
+
+    drrLo.resize(nr+1), drrHi.resize(nr+1);
+    d1Lo.resize(nr), d1Hi.resize(nr);
+    d2Lo.resize(nr), d2Hi.resize(nr);
+
+    // XXX Here we explicitly assume that n1[i] = n1[i+1] at all radii
+    std::vector<len_t> lenR(nr+1), len1(nr), len2(nr);
+    for (len_t ir = 0; ir < nr+1; ir++) {
+        GetStoredLines(FLUXGRIDTYPE_RADIAL, ir, drrLo[ir], drrHi[ir]);
+        lenR[ir] = n1[std::min(ir, nr-1)];
+    }
+    for (len_t ir = 0; ir < nr; ir++) {
+        GetStoredLines(FLUXGRIDTYPE_P1, ir, d1Lo[ir], d1Hi[ir]);
+        GetStoredLines(FLUXGRIDTYPE_P2, ir, d2Lo[ir], d2Hi[ir]);
+        len1[ir] = n1[ir]+1;
+        len2[ir] = n1[ir];
+    }
+
+    drrData = AllocateLines(this->drr, nr+1, lenR, drrLo, drrHi);
+    d11Data = AllocateLines(this->d11, nr, len1, d1Lo, d1Hi);
+    d12Data = AllocateLines(this->d12, nr, len1, d1Lo, d1Hi);
+    d21Data = AllocateLines(this->d21, nr, len2, d2Lo, d2Hi);
+    d22Data = AllocateLines(this->d22, nr, len2, d2Lo, d2Hi);
+}
+
+/**
+ * Returns true if the coefficients are allocated for the cells currently
+ * owned by this rank.
+ */
+bool DiffusionTerm::CoefficientLayoutIsCurrent() const {
+    if (this->drr == nullptr || drrLo.size() != nr+1)
+        return false;
+
+    len_t jlo, jhi;
+    for (len_t ir = 0; ir < nr+1; ir++) {
+        GetStoredLines(FLUXGRIDTYPE_RADIAL, ir, jlo, jhi);
+        if (jlo != drrLo[ir] || jhi != drrHi[ir])
+            return false;
+    }
+    for (len_t ir = 0; ir < nr; ir++) {
+        GetStoredLines(FLUXGRIDTYPE_P1, ir, jlo, jhi);
+        if (jlo != d1Lo[ir] || jhi != d1Hi[ir])
+            return false;
+        GetStoredLines(FLUXGRIDTYPE_P2, ir, jlo, jhi);
+        if (jlo != d2Lo[ir] || jhi != d2Hi[ir])
+            return false;
+    }
+    return true;
+}
+
+/**
+ * Number of diffusion coefficients stored by this term.
+ */
+len_t DiffusionTerm::GetNumberOfStoredCoefficients() const {
+    if (this->coefficientsShared || drrLo.size() != nr+1)
+        return 0;
+
+    len_t N = 0;
+    for (len_t ir = 0; ir < nr+1; ir++)
+        N += (drrHi[ir]-drrLo[ir]) * n1[std::min(ir, nr-1)];
+    for (len_t ir = 0; ir < nr; ir++)
+        N += 2*(d1Hi[ir]-d1Lo[ir])*(n1[ir]+1) + 2*(d2Hi[ir]-d2Lo[ir])*n1[ir];
+    return N;
+}
+
+/**
+ * Deallocate the data of the diffusion coefficients (the rows are then
+ * nullptr).
+ */
+void DiffusionTerm::DeallocateCoefficientData() {
+    delete [] drrData;
+    delete [] d11Data;
+    delete [] d12Data;
+    delete [] d21Data;
+    delete [] d22Data;
+    drrData = d11Data = d12Data = d21Data = d22Data = nullptr;
+
+    if (this->drr != nullptr)
+        for (len_t ir = 0; ir < nr+1; ir++)
+            this->drr[ir] = nullptr;
+    for (real_t **d : {this->d11, this->d12, this->d21, this->d22})
+        if (d != nullptr)
+            for (len_t ir = 0; ir < nr; ir++)
+                d[ir] = nullptr;
+
+    drrLo.clear(), drrHi.clear();
+    d1Lo.clear(), d1Hi.clear();
+    d2Lo.clear(), d2Hi.clear();
 }
 
 void DiffusionTerm::AllocateDifferentiationCoefficients() {
@@ -150,29 +235,18 @@ void DiffusionTerm::AllocateDifferentiationCoefficients() {
  * Deallocates the memory used by the diffusion coefficients.
  */
 void DiffusionTerm::DeallocateCoefficients() {
-    if (drr != nullptr) {
-        delete [] drr[0];
-        delete [] drr;
-    }
-    if (d11 != nullptr) {
-        delete [] d11[0];
-        delete [] d11;
-    }
-    if (d12 != nullptr) {
-        delete [] d12[0];
-        delete [] d12;
-    }
-    if (d21 != nullptr) {
-        delete [] d21[0];
-        delete [] d21;
-    }
-    if (d22 != nullptr) {
-        delete [] d22[0];
-        delete [] d22;
-    }
+    // (only the data allocated by this term, see 'AllocateCoefficientData()')
+    DeallocateCoefficientData();
 
-    if(deltaRadialFlux != nullptr)
-        delete [] deltaRadialFlux;
+    delete [] drr;
+    delete [] d11;
+    delete [] d12;
+    delete [] d21;
+    delete [] d22;
+    delete [] deltaRadialFlux;
+
+    drr = d11 = d12 = d21 = d22 = nullptr;
+    deltaRadialFlux = nullptr;
 }
 
 /**
@@ -263,35 +337,29 @@ bool DiffusionTerm::GridRebuilt() {
  * Set all advection coefficients to zero.
  */
 void DiffusionTerm::ResetCoefficients() {
-    const len_t
-        nr = this->grid->GetNr();
-
+    // Only the stored lines (see 'AllocateCoefficientData()')
+    len_t jlo, jhi;
     for (len_t ir = 0; ir < nr+1; ir++) {
         // XXX here we assume that all momentum grids are the same
-        const len_t np2 = this->grid->GetMomentumGrid(0)->GetNp2();
-        const len_t np1 = this->grid->GetMomentumGrid(0)->GetNp1();
-
-        for (len_t j = 0; j < np2; j++)
+        const len_t np1 = n1[std::min(ir, nr-1)];
+        GetStoredLines(FLUXGRIDTYPE_RADIAL, ir, jlo, jhi);
+        for (len_t j = jlo; j < jhi; j++)
             for (len_t i = 0; i < np1; i++)
                 this->drr[ir][j*np1 + i]  = 0;
     }
 
     for (len_t ir = 0; ir < nr; ir++) {
-        const len_t np2 = this->grid->GetMomentumGrid(ir)->GetNp2();
-        const len_t np1 = this->grid->GetMomentumGrid(ir)->GetNp1();
+        const len_t np1 = n1[ir];
 
-        for (len_t j = 0; j < np2; j++)
+        GetStoredLines(FLUXGRIDTYPE_P1, ir, jlo, jhi);
+        for (len_t j = jlo; j < jhi; j++)
             for (len_t i = 0; i < np1+1; i++) {
                 this->d11[ir][j*(np1+1) + i]  = 0;
                 this->d12[ir][j*(np1+1) + i]  = 0;
             }
-    }
 
-    for (len_t ir = 0; ir < nr; ir++) {
-        const len_t np2 = this->grid->GetMomentumGrid(ir)->GetNp2();
-        const len_t np1 = this->grid->GetMomentumGrid(ir)->GetNp1();
-
-        for (len_t j = 0; j < np2+1; j++)
+        GetStoredLines(FLUXGRIDTYPE_P2, ir, jlo, jhi);
+        for (len_t j = jlo; j < jhi; j++)
             for (len_t i = 0; i < np1; i++) {
                 this->d22[ir][j*np1 + i]  = 0;
                 this->d21[ir][j*np1 + i]  = 0;
@@ -479,20 +547,31 @@ void DiffusionTerm::SaveCoefficientsSFile(SFile *sf) {
         n1 = this->grid->GetMomentumGrid(0)->GetNp1(),
         n2 = this->grid->GetMomentumGrid(0)->GetNp2();
 
-    dims[0]=nr+1; dims[1]=n2; dims[2]=n1;
+    // Only the lines stored by this rank are known; the others are saved as 0
+    auto save = [&](const char *name, real_t **c, fluxGridType fg, sfilesize_t nk, sfilesize_t nj, sfilesize_t ni) {
+        std::vector<real_t> full(nk*nj*ni, 0.0);
+        len_t jlo, jhi;
+        for (len_t k = 0; k < nk; k++) {
+            GetStoredLines(fg, k, jlo, jhi);
+            for (len_t j = jlo; j < jhi; j++)
+                for (len_t i = 0; i < ni; i++)
+                    full[(k*nj + j)*ni + i] = c[k][j*ni + i];
+        }
+        dims[0]=nk; dims[1]=nj; dims[2]=ni;
+        sf->WriteMultiArray(name, full.data(), 3, dims);
+    };
+
     if (this->drr != nullptr)
-        sf->WriteMultiArray("Drr", this->drr[0], 3, dims);
+        save("Drr", this->drr, FLUXGRIDTYPE_RADIAL, nr+1, n2, n1);
 
-    dims[0]=nr; dims[1]=n2+1; dims[2]=n1;
     if (this->d21 != nullptr)
-        sf->WriteMultiArray("D21", this->d21[0], 3, dims);
+        save("D21", this->d21, FLUXGRIDTYPE_P2, nr, n2+1, n1);
     if (this->d22 != nullptr)
-        sf->WriteMultiArray("D22", this->d21[0], 3, dims);
+        save("D22", this->d22, FLUXGRIDTYPE_P2, nr, n2+1, n1);
 
-    dims[0]=nr; dims[1]=n2; dims[2]=n1+1;
     if (this->d12 != nullptr)
-        sf->WriteMultiArray("D12", this->d12[0], 3, dims);
+        save("D12", this->d12, FLUXGRIDTYPE_P1, nr, n2, n1+1);
     if (this->d11 != nullptr)
-        sf->WriteMultiArray("D11", this->d11[0], 3, dims);
+        save("D11", this->d11, FLUXGRIDTYPE_P1, nr, n2, n1+1);
 }
 

@@ -39,6 +39,11 @@ namespace DREAM::FVM {
 
         bool coefficientsShared = false;
 
+        // Memory of the coefficients owned by this term (if not shared):
+        // only the lines stored by this rank (see 'AllocateCoefficientData()')
+        real_t *frData = nullptr, *f1Data = nullptr, *f2Data = nullptr, *f1pSqData = nullptr;
+        std::vector<len_t> frLo, frHi, f1Lo, f1Hi, f2Lo, f2Hi;
+
         // Interpolation coefficients
         AdvectionInterpolationCoefficient *deltar=nullptr, *delta1=nullptr, *delta2=nullptr;
         bool interpolationCoefficientsShared = false;
@@ -52,6 +57,10 @@ namespace DREAM::FVM {
 
         // Memory allocation for various coefficients
         void AllocateCoefficients();
+        void AllocateCoefficientTables();
+        void AllocateCoefficientData();
+        void DeallocateCoefficientData();
+        bool CoefficientLayoutIsCurrent() const;
         void AllocateDifferentiationCoefficients();
         void AllocateInterpolationCoefficients();
         void DeallocateCoefficients();
@@ -66,6 +75,14 @@ namespace DREAM::FVM {
     public:
         AdvectionTerm(Grid*, bool allocateCoeffs=false);
         ~AdvectionTerm();
+
+        // (Re)allocate the coefficients owned by this term if the cells
+        // owned by this rank have changed (the coefficients are then 0)
+        void UpdateCoefficientLayout()
+        { if (!this->coefficientsShared && !CoefficientLayoutIsCurrent()) AllocateCoefficientData(); }
+
+        // Number of coefficients (fr, f1, f2, f1pSqAtZero) stored by this term
+        len_t GetNumberOfStoredCoefficients() const;
 
         const real_t *const* GetAdvectionCoeffR() const { return this->fr; }
         const real_t *GetAdvectionCoeffR(const len_t i) const { return this->fr[i]; }

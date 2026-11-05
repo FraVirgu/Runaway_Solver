@@ -18,11 +18,10 @@ namespace DREAM::FVM {
     private:
         real_t scaleFactor;
     protected:
-        // Only the elements owned by this rank are set (and used)
+        // Only the weights of the elements owned by this rank are stored
         virtual void SetWeights() override {
-            const len_t iEnd = GetFirstLocalElement() + GetNumberOfLocalElements();
-            for(len_t i = GetFirstLocalElement(); i < iEnd; i++)
-                weights[i] = scaleFactor;
+            for(len_t k = 0; k < GetNumberOfLocalElements(); k++)
+                weights[k] = scaleFactor;
         }
     public:
         TransientTerm(Grid* g, const len_t unknownId, real_t scaleFactor = 1.0) 

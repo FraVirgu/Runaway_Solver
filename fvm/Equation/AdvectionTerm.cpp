@@ -2,6 +2,8 @@
  * Implementation of a general advection term.
  */
 
+#include <algorithm>
+#include <vector>
 #include "FVM/Equation/AdvectionTerm.hpp"
 #include "FVM/Equation/TermLog.hpp"
 #include "FVM/Grid/Grid.hpp"
@@ -58,51 +60,33 @@ AdvectionTerm::~AdvectionTerm()
 
 /**
  * Allocate new memory for the advection coefficients
- * based on the current grid sizes.
+ * based on the current grid sizes (on the lines stored
+ * by this rank, see 'AllocateCoefficientData()').
  */
 void AdvectionTerm::AllocateCoefficients()
+{
+    AllocateCoefficientTables();
+    AllocateCoefficientData();
+}
+
+/**
+ * Allocate the tables of rows of the advection coefficients (with no
+ * data: see 'AllocateCoefficientData()'), and the interpolation
+ * coefficients to the radial flux grid.
+ *
+ * The tables are kept for the lifetime of this term, so that terms which
+ * share these coefficients (see 'SetCoefficients()') see the rows of any
+ * later allocation of the data.
+ */
+void AdvectionTerm::AllocateCoefficientTables()
 {
     if (!this->coefficientsShared)
         DeallocateCoefficients();
 
-    this->fr = new real_t *[nr + 1];
-    this->f1 = new real_t *[nr];
-    this->f2 = new real_t *[nr];
-    this->f1pSqAtZero = new real_t *[nr];
-
-    len_t
-        nElements_fr = n1[nr - 1] * n2[nr - 1],
-        nElements_f1 = 0,
-        nElements_f2 = 0,
-        nElements_f1pSq = 0;
-
-    for (len_t i = 0; i < nr; i++)
-    {
-        nElements_fr += n1[i] * n2[i];
-        nElements_f1 += (n1[i] + 1) * n2[i];
-        nElements_f2 += n1[i] * (n2[i] + 1);
-        nElements_f1pSq += n2[i];
-    }
-
-    this->fr[0] = new real_t[nElements_fr];
-    this->f1[0] = new real_t[nElements_f1];
-    this->f2[0] = new real_t[nElements_f2];
-    this->f1pSqAtZero[0] = new real_t[nElements_f1pSq];
-
-    for (len_t i = 1; i < nr; i++)
-    {
-        this->fr[i] = this->fr[i - 1] + (n1[i - 1] * n2[i - 1]);
-        this->f1[i] = this->f1[i - 1] + ((n1[i - 1] + 1) * n2[i - 1]);
-        this->f2[i] = this->f2[i - 1] + (n1[i - 1] * (n2[i - 1] + 1));
-        this->f1pSqAtZero[i] = this->f1pSqAtZero[i - 1] + n2[i - 1];
-    }
-
-    // XXX: Here we assume that the momentum grid is the same
-    // at all radial grid points, so that n1_{nr+1/2} = n1_{nr-1/2}
-    // (and the same for n2)
-    this->fr[nr] = this->fr[nr - 1] + n1[nr - 1] * n2[nr - 1];
-
-    this->ResetCoefficients();
+    this->fr = new real_t *[nr + 1]();
+    this->f1 = new real_t *[nr]();
+    this->f2 = new real_t *[nr]();
+    this->f1pSqAtZero = new real_t *[nr]();
 
     // Set interpolation coefficients for unknowns to radial flux grid
     this->deltaRadialFlux = new real_t[nr + 1];
@@ -117,6 +101,117 @@ void AdvectionTerm::AllocateCoefficients()
     }
 
     this->coefficientsShared = false;
+}
+
+/**
+ * Allocate the advection coefficients, set to 0, on the lines that
+ * contain faces of the cells owned by this rank (see
+ * 'EquationTerm::GetStoredLines()'): fr[ir], f1[ir], f2[ir] and
+ * f1pSqAtZero[ir] are nullptr at the other radii, and are indexed with
+ * the global (i, j) on the stored lines.
+ */
+void AdvectionTerm::AllocateCoefficientData()
+{
+    DeallocateCoefficientData();
+
+    frLo.resize(nr + 1), frHi.resize(nr + 1);
+    f1Lo.resize(nr), f1Hi.resize(nr);
+    f2Lo.resize(nr), f2Hi.resize(nr);
+
+    // XXX: Here we assume that the momentum grid is the same
+    // at all radial grid points, so that n1_{nr+1/2} = n1_{nr-1/2}
+    std::vector<len_t> lenR(nr + 1), len1(nr), len2(nr), len1pSq(nr, 1);
+    for (len_t ir = 0; ir < nr + 1; ir++)
+    {
+        GetStoredLines(FLUXGRIDTYPE_RADIAL, ir, frLo[ir], frHi[ir]);
+        lenR[ir] = n1[std::min(ir, nr - 1)];
+    }
+    for (len_t ir = 0; ir < nr; ir++)
+    {
+        GetStoredLines(FLUXGRIDTYPE_P1, ir, f1Lo[ir], f1Hi[ir]);
+        GetStoredLines(FLUXGRIDTYPE_P2, ir, f2Lo[ir], f2Hi[ir]);
+        len1[ir] = n1[ir] + 1;
+        len2[ir] = n1[ir];
+    }
+
+    frData = AllocateLines(this->fr, nr + 1, lenR, frLo, frHi);
+    f1Data = AllocateLines(this->f1, nr, len1, f1Lo, f1Hi);
+    f2Data = AllocateLines(this->f2, nr, len2, f2Lo, f2Hi);
+    f1pSqData = AllocateLines(this->f1pSqAtZero, nr, len1pSq, f1Lo, f1Hi);
+}
+
+/**
+ * Returns true if the coefficients are allocated for the cells currently
+ * owned by this rank.
+ */
+bool AdvectionTerm::CoefficientLayoutIsCurrent() const
+{
+    if (this->fr == nullptr || frLo.size() != nr + 1)
+        return false;
+
+    len_t jlo, jhi;
+    for (len_t ir = 0; ir < nr + 1; ir++)
+    {
+        GetStoredLines(FLUXGRIDTYPE_RADIAL, ir, jlo, jhi);
+        if (jlo != frLo[ir] || jhi != frHi[ir])
+            return false;
+    }
+    for (len_t ir = 0; ir < nr; ir++)
+    {
+        GetStoredLines(FLUXGRIDTYPE_P1, ir, jlo, jhi);
+        if (jlo != f1Lo[ir] || jhi != f1Hi[ir])
+            return false;
+        GetStoredLines(FLUXGRIDTYPE_P2, ir, jlo, jhi);
+        if (jlo != f2Lo[ir] || jhi != f2Hi[ir])
+            return false;
+    }
+    return true;
+}
+
+/**
+ * Number of advection coefficients stored by this term.
+ */
+len_t AdvectionTerm::GetNumberOfStoredCoefficients() const
+{
+    if (this->coefficientsShared || frLo.size() != nr + 1)
+        return 0;
+
+    len_t N = 0;
+    for (len_t ir = 0; ir < nr + 1; ir++)
+        N += (frHi[ir] - frLo[ir]) * n1[std::min(ir, nr - 1)];
+    for (len_t ir = 0; ir < nr; ir++)
+        N += (f1Hi[ir] - f1Lo[ir]) * (n1[ir] + 2) + (f2Hi[ir] - f2Lo[ir]) * n1[ir];
+    return N;
+}
+
+/**
+ * Deallocate the data of the advection coefficients (the rows are then
+ * nullptr).
+ */
+void AdvectionTerm::DeallocateCoefficientData()
+{
+    delete[] frData;
+    delete[] f1Data;
+    delete[] f2Data;
+    delete[] f1pSqData;
+    frData = f1Data = f2Data = f1pSqData = nullptr;
+
+    if (this->fr != nullptr)
+        for (len_t ir = 0; ir < nr + 1; ir++)
+            this->fr[ir] = nullptr;
+    for (len_t ir = 0; ir < nr; ir++)
+    {
+        if (this->f1 != nullptr)
+            this->f1[ir] = nullptr;
+        if (this->f2 != nullptr)
+            this->f2[ir] = nullptr;
+        if (this->f1pSqAtZero != nullptr)
+            this->f1pSqAtZero[ir] = nullptr;
+    }
+
+    frLo.clear(), frHi.clear();
+    f1Lo.clear(), f1Hi.clear();
+    f2Lo.clear(), f2Hi.clear();
 }
 
 /**
@@ -179,29 +274,17 @@ void AdvectionTerm::AllocateDifferentiationCoefficients()
  */
 void AdvectionTerm::DeallocateCoefficients()
 {
-    if (f2 != nullptr)
-    {
-        delete[] f2[0];
-        delete[] f2;
-    }
-    if (f1 != nullptr)
-    {
-        delete[] f1[0];
-        delete[] f1;
-    }
-    if (fr != nullptr)
-    {
-        delete[] fr[0];
-        delete[] fr;
-    }
-    if (f1pSqAtZero != nullptr)
-    {
-        delete[] f1pSqAtZero[0];
-        delete[] f1pSqAtZero;
-    }
+    // (only the data allocated by this term, see 'AllocateCoefficientData()')
+    DeallocateCoefficientData();
 
-    if (deltaRadialFlux != nullptr)
-        delete[] deltaRadialFlux;
+    delete[] f2;
+    delete[] f1;
+    delete[] fr;
+    delete[] f1pSqAtZero;
+    delete[] deltaRadialFlux;
+
+    f2 = f1 = fr = f1pSqAtZero = nullptr;
+    deltaRadialFlux = nullptr;
 }
 
 /**
@@ -428,39 +511,32 @@ void AdvectionTerm::RebuildInterpolationCoefficients(
  */
 void AdvectionTerm::ResetCoefficients()
 {
-    const len_t
-        nr = this->grid->GetNr();
-
+    // Only the stored lines (see 'AllocateCoefficientData()')
+    len_t jlo, jhi;
     for (len_t ir = 0; ir < nr + 1; ir++)
     {
         // XXX here we assume that all momentum grids are the same
-        const len_t np2 = this->grid->GetMomentumGrid(0)->GetNp2();
-        const len_t np1 = this->grid->GetMomentumGrid(0)->GetNp1();
-
-        for (len_t j = 0; j < np2; j++)
+        const len_t np1 = n1[std::min(ir, nr - 1)];
+        GetStoredLines(FLUXGRIDTYPE_RADIAL, ir, jlo, jhi);
+        for (len_t j = jlo; j < jhi; j++)
             for (len_t i = 0; i < np1; i++)
                 this->fr[ir][j * np1 + i] = 0;
     }
 
     for (len_t ir = 0; ir < nr; ir++)
     {
-        const len_t np2 = this->grid->GetMomentumGrid(ir)->GetNp2();
-        const len_t np1 = this->grid->GetMomentumGrid(ir)->GetNp1();
+        const len_t np1 = n1[ir];
 
-        for (len_t j = 0; j < np2; j++)
+        GetStoredLines(FLUXGRIDTYPE_P1, ir, jlo, jhi);
+        for (len_t j = jlo; j < jhi; j++)
         {
             for (len_t i = 0; i < np1 + 1; i++)
                 this->f1[ir][j * (np1 + 1) + i] = 0;
             this->f1pSqAtZero[ir][j] = 0;
         }
-    }
 
-    for (len_t ir = 0; ir < nr; ir++)
-    {
-        const len_t np2 = this->grid->GetMomentumGrid(ir)->GetNp2();
-        const len_t np1 = this->grid->GetMomentumGrid(ir)->GetNp1();
-
-        for (len_t j = 0; j < np2 + 1; j++)
+        GetStoredLines(FLUXGRIDTYPE_P2, ir, jlo, jhi);
+        for (len_t j = jlo; j < jhi; j++)
             for (len_t i = 0; i < np1; i++)
                 this->f2[ir][j * np1 + i] = 0;
     }
@@ -644,25 +720,28 @@ void AdvectionTerm::SaveCoefficientsSFile(SFile *sf)
         n1 = this->grid->GetMomentumGrid(0)->GetNp1(),
         n2 = this->grid->GetMomentumGrid(0)->GetNp2();
 
+    // Only the lines stored by this rank are known; the others are saved as 0
+    auto save = [&](const char *name, real_t **c, fluxGridType fg, sfilesize_t nk, sfilesize_t nj, sfilesize_t ni)
+    {
+        std::vector<real_t> full(nk * nj * ni, 0.0);
+        len_t jlo, jhi;
+        for (len_t k = 0; k < nk; k++)
+        {
+            GetStoredLines(fg, k, jlo, jhi);
+            for (len_t j = jlo; j < jhi; j++)
+                for (len_t i = 0; i < ni; i++)
+                    full[(k * nj + j) * ni + i] = c[k][j * ni + i];
+        }
+        dims[0] = nk;
+        dims[1] = nj;
+        dims[2] = ni;
+        sf->WriteMultiArray(name, full.data(), 3, dims);
+    };
+
     if (this->fr != nullptr)
-    {
-        dims[0] = nr + 1;
-        dims[1] = n2;
-        dims[2] = n1;
-        sf->WriteMultiArray("Fr", this->fr[0], 3, dims);
-    }
+        save("Fr", this->fr, FLUXGRIDTYPE_RADIAL, nr + 1, n2, n1);
     if (this->f2 != nullptr)
-    {
-        dims[0] = nr;
-        dims[1] = n2 + 1;
-        dims[2] = n1;
-        sf->WriteMultiArray("F2", this->f2[0], 3, dims);
-    }
+        save("F2", this->f2, FLUXGRIDTYPE_P2, nr, n2 + 1, n1);
     if (this->f1 != nullptr)
-    {
-        dims[0] = nr;
-        dims[1] = n2;
-        dims[2] = n1 + 1;
-        sf->WriteMultiArray("F1", this->f1[0], 3, dims);
-    }
+        save("F1", this->f1, FLUXGRIDTYPE_P1, nr, n2, n1 + 1);
 }

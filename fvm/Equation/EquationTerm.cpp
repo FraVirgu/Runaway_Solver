@@ -116,6 +116,83 @@ bool EquationTerm::GetLocalRange(
 }
 
 /**
+ * Returns the lines j in [jlo, jhi) of index 'ir' of the flux grid
+ * 'fgType' whose coefficients this rank stores: those containing faces of
+ * the cells it owns (see 'GetLocalRange()'), as whole lines.
+ *
+ *   FLUXGRIDTYPE_P1:     lines of the cells at radius ir
+ *   FLUXGRIDTYPE_P2:     same, plus the upper xi face of the last line
+ *   FLUXGRIDTYPE_RADIAL: face ir is the outer face of the cells at ir-1
+ *                        and the inner face of those at ir. The outer
+ *                        boundary (ir = nr) is stored whole, since the
+ *                        transport boundary conditions read all of it.
+ *
+ * On a fluid grid (one cell per radius) all lines are stored, since the
+ * coefficients of fluid quantities are read at any radius.
+ */
+void EquationTerm::GetStoredLines(
+    fluxGridType fgType, const len_t ir, len_t &jlo, len_t &jhi
+) const {
+    // XXX here we assume that all momentum grids are the same
+    const len_t np2 = n2[std::min(ir, nr-1)] + (fgType == FLUXGRIDTYPE_P2);
+
+    if (grid->GetNCells() == nr) {
+        jlo = 0, jhi = np2;
+        return;
+    }
+
+    len_t i1lo, i1hi, i2lo, i2hi;
+    jlo = jhi = 0;
+    if (fgType == FLUXGRIDTYPE_RADIAL) {
+        jlo = np2;
+        for (len_t k = (ir > 0 ? ir-1 : 0); k <= ir && k < nr; k++)
+            if (GetLocalRange(k, i1lo, i1hi, i2lo, i2hi))
+                jlo = std::min(jlo, i2lo), jhi = std::max(jhi, i2hi);
+
+        if (jlo >= jhi)
+            jlo = jhi = 0;
+        else if (ir == nr)
+            jlo = 0, jhi = np2;
+    } else if (GetLocalRange(ir, i1lo, i1hi, i2lo, i2hi)) {
+        jlo = i2lo;
+        jhi = i2hi + (fgType == FLUXGRIDTYPE_P2);
+    }
+}
+
+/**
+ * Allocate, in one block set to 0, the lines j in [jlo[k], jhi[k]) of
+ * 'lineLength[k]' elements of each row k < nRows, and point rows[k] to
+ * element (j=0, i=0) of that row, so that rows[k][j*lineLength[k] + i]
+ * can be used with the global j on the stored lines (as PETSc does for
+ * the local part of a distributed array). rows[k] is nullptr for the rows
+ * with no stored line.
+ *
+ * RETURNS the block, to be deleted by the caller (nullptr if empty).
+ */
+real_t *EquationTerm::AllocateLines(
+    real_t **rows, const len_t nRows, const std::vector<len_t> &lineLength,
+    const std::vector<len_t> &jlo, const std::vector<len_t> &jhi
+) {
+    len_t N = 0;
+    for (len_t k = 0; k < nRows; k++)
+        N += (jhi[k]-jlo[k]) * lineLength[k];
+
+    real_t *data = (N > 0 ? new real_t[N]() : nullptr);
+
+    len_t off = 0;
+    for (len_t k = 0; k < nRows; k++) {
+        if (jlo[k] == jhi[k]) {
+            rows[k] = nullptr;
+            continue;
+        }
+        rows[k] = data + off - jlo[k]*lineLength[k];
+        off += (jhi[k]-jlo[k]) * lineLength[k];
+    }
+
+    return data;
+}
+
+/**
  * Returns true if derivId is in the derivIdsJacobian vector.
  *
  * derivId:    ID of unknown quantity to differentiate w.r.t.

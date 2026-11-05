@@ -6,6 +6,7 @@
 #include "DREAM/PostProcessor.hpp"
 #include "DREAM/Settings/Settings.hpp"
 #include "DREAM/Settings/SimulationGenerator.hpp"
+#include "DREAM/Settings/ProcessMemory.hpp"
 #include "DREAM/Settings/KineticOnly.hpp"
 #include "FVM/Interpolator1D.hpp"
 #include "FVM/Grid/RadialGrid.hpp"
@@ -72,29 +73,37 @@ EquationSystem *SimulationGenerator::ConstructEquationSystem(
     ADAS *adas, NIST *nist, AMJUEL *amjuel)
 {
     fprintf(stderr, "[eqsys] start\n");
+    RecordProcessMemory("eqsys: start");
     EquationSystem *eqsys = new EquationSystem(scalarGrid, fluidGrid, ht_type, hottailGrid, re_type, runawayGrid, s);
     fprintf(stderr, "[eqsys] EquationSystem object\n");
+    RecordProcessMemory("eqsys: EquationSystem object");
     struct OtherQuantityHandler::eqn_terms *oqty_terms = new OtherQuantityHandler::eqn_terms;
     fprintf(stderr, "[eqsys] eqn_terms\n");
+    RecordProcessMemory("eqsys: eqn_terms");
 
     // Timing information
     eqsys->SetTiming(s->GetBool("output/timingstdout"), s->GetBool("output/timingfile"));
     fprintf(stderr, "[eqsys] timing\n");
+    RecordProcessMemory("eqsys: timing");
 
     // Initialize from previous simulation output?
     const real_t t0 = ConstructInitializer(eqsys, s);
     fprintf(stderr, "[eqsys] initializer\n");
+    RecordProcessMemory("eqsys: initializer");
     // Construct unknowns
     ConstructUnknowns(eqsys, s, scalarGrid, fluidGrid, hottailGrid, runawayGrid);
     fprintf(stderr, "[eqsys] unknowns\n");
+    RecordProcessMemory("eqsys: unknowns");
 
     // Construct equations according to settings
     ConstructEquations(eqsys, s, adas, nist, amjuel, oqty_terms);
     fprintf(stderr, "[eqsys] equations\n");
+    RecordProcessMemory("eqsys: equations");
 
     // Construct the "other" quantity handler
     ConstructOtherQuantityHandler(eqsys, s, oqty_terms);
     fprintf(stderr, "[eqsys] other quantity handler\n");
+    RecordProcessMemory("eqsys: other quantity handler");
 
     // Figure out which unknowns must be part of the matrix,
     // and set initial values for those quantities which don't
@@ -102,6 +111,7 @@ EquationSystem *SimulationGenerator::ConstructEquationSystem(
 
     // yet have an initial value.
     eqsys->ProcessSystem(t0);
+    RecordProcessMemory("eqsys: ProcessSystem");
     std::cout << "Inside ConstructEquationSystem after ProcessSystem 1" << std::endl;
 
     // (these must be initialized AFTER calling 'ProcessSystem()' on
@@ -111,11 +121,13 @@ EquationSystem *SimulationGenerator::ConstructEquationSystem(
 
     // Construct the time stepper
     ConstructTimeStepper(eqsys, s);
+    RecordProcessMemory("eqsys: time stepper");
 
     // Construct solver (must be done after processing equation system,
     // since we need to know which unknowns are "non-trivial",
     // i.e. need to show up in the solver matrices)
     ConstructSolver(eqsys, s);
+    RecordProcessMemory("eqsys: solver (matrix allocated)");
 
     return eqsys;
 }

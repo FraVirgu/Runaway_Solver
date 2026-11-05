@@ -3,6 +3,7 @@
 
 #include <limits>
 #include <string>
+#include <vector>
 #include "FVM/Grid/Grid.hpp"
 #include "FVM/Matrix.hpp"
 #include "FVM/UnknownQuantityHandler.hpp"
@@ -30,6 +31,14 @@ namespace DREAM::FVM
 
         // The cells at radius 'ir' whose matrix rows are owned by this rank
         bool GetLocalRange(const len_t ir, len_t &i1lo, len_t &i1hi, len_t &i2lo, len_t &i2hi) const;
+
+        // Lines j in [jlo, jhi) of index 'ir' of the given flux grid whose
+        // coefficients this rank stores (see EquationTerm.cpp)
+        void GetStoredLines(fluxGridType, const len_t ir, len_t &jlo, len_t &jhi) const;
+        static real_t *AllocateLines(
+            real_t **rows, const len_t nRows, const std::vector<len_t> &lineLength,
+            const std::vector<len_t> &jlo, const std::vector<len_t> &jhi
+        );
 
         // True if element 'idx' of the quantity is a matrix row owned by this
         // rank. (The range of GetLocalRange() is a box, which also contains

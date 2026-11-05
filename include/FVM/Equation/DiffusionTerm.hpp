@@ -36,12 +36,30 @@ namespace DREAM::FVM {
 
         bool coefficientsShared = false;
 
+        // Memory of the coefficients owned by this term (if not shared):
+        // only the lines stored by this rank (see 'AllocateCoefficientData()')
+        real_t *drrData = nullptr, *d11Data = nullptr, *d12Data = nullptr, *d21Data = nullptr, *d22Data = nullptr;
+        std::vector<len_t> drrLo, drrHi, d1Lo, d1Hi, d2Lo, d2Hi;
+
+        void AllocateCoefficientTables();
+        void AllocateCoefficientData();
+        void DeallocateCoefficientData();
+        bool CoefficientLayoutIsCurrent() const;
+
         void SetPartialJacobianContribution(int_t, jacobian_interp_mode, len_t, Matrix*, const real_t*);
         void ResetJacobianColumn();
 
     public:
         DiffusionTerm(Grid*, bool allocCoefficients=false);
         virtual ~DiffusionTerm();
+
+        // (Re)allocate the coefficients owned by this term if the cells
+        // owned by this rank have changed (the coefficients are then 0)
+        void UpdateCoefficientLayout()
+        { if (!this->coefficientsShared && !CoefficientLayoutIsCurrent()) AllocateCoefficientData(); }
+
+        // Number of coefficients (drr, d11, d12, d21, d22) stored by this term
+        len_t GetNumberOfStoredCoefficients() const;
 
         void AllocateCoefficients();
         void AllocateDifferentiationCoefficients();

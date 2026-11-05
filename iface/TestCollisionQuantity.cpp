@@ -1,9 +1,10 @@
 /**
- * Test of the distributed collision quantities: builds the simulation from
- * a DREAM settings file exactly as dreami does, reproduces the first
- * rebuild of the collision quantity handlers done by the solver
- * (Solver::RebuildTerms*(): SetCollisionQuantityLocalRange() followed by
- * CollisionQuantityHandler::Rebuild()) and saves the result.
+ * Test of the distributed collision quantities and kinetic operators:
+ * builds the simulation from a DREAM settings file exactly as dreami does,
+ * does the first rebuild of the solver
+ * (Solver::RebuildTermsTransientAdvectionDiffusion(): collision quantity
+ * handlers, then transient, advection-diffusion and boundary terms, each
+ * on the rows of this rank) and saves the result.
  *
  * Each rank only computes the radii containing its own rows of the
  * distribution function. The values of all ranks are collected on rank 0
@@ -16,8 +17,16 @@
  * flux grids,
  *   - the values of lnLambdaEE, lnLambdaEI, nuS, nuD and nuPar,
  *   - the partial derivatives of nuS, nuD and nuPar with respect to
- *     n_cold, n_i and T_cold (used to build the Jacobian).
+ *     n_cold and n_i (used to build the Jacobian).
  * A radius that no rank has computed is saved as NaN.
+ *
+ * The memory file reports, per rank, the bytes stored for the collision
+ * values, the transient weights, the advection interpolation coefficients
+ * and the advection/diffusion coefficients of f_hot and f_re (against what
+ * a serial run stored before they were distributed), the storage of the
+ * PETSc matrix, and the resident set size of the process at the end of
+ * each stage of the construction (recorded with RecordProcessMemory(), see
+ * DREAM/Settings/ProcessMemory.hpp).
  *
  * Syntax:
  *   mpirun -n <N> ./testcollisionquantity dream_settings.h5
@@ -34,8 +43,6 @@
 #include <string>
 #include <vector>
 #include <H5Cpp.h>
-#include <sys/resource.h>
-#include <unistd.h>
 
 #include <petscvec.h>
 #include <softlib/SOFTLibException.h>
@@ -46,7 +53,11 @@
 #include "DREAM/Settings/SFile.hpp"
 #include "DREAM/Settings/SimulationGenerator.hpp"
 #include "DREAM/Simulation.hpp"
+#include "DREAM/Settings/ProcessMemory.hpp"
+#include "FVM/BlockMatrix.hpp"
 #include "FVM/FVMException.hpp"
+#include "FVM/Equation/AdvectionDiffusionTerm.hpp"
+#include "FVM/Equation/Operator.hpp"
 
 using namespace std;
 using namespace DREAM;
@@ -187,9 +198,69 @@ static real_t CollisionValueBytes(CollisionQuantityHandler *cqh, FVM::Grid *grid
 }
 
 /**
+ * Number of bytes allocated by this rank for the operator of a kinetic
+ * equation (the diagonal block of unknown 'uqty'):
+ *   trans:  weights of its transient terms,
+ *   interp: interpolation coefficients of its advection-diffusion term,
+ *   coeff:  advection (fr, f1, f2, f1pSqAtZero) and diffusion (drr, d11,
+ *           d12, d21, d22) coefficients of its advection-diffusion term,
+ * and (transAll, interpAll, coeffAll) what a serial run allocated for them
+ * before they were distributed (all cells; the jacobian interpolation
+ * coefficients always stored).
+ */
+static void OperatorBytes(
+    EquationSystem *eqsys, const string &uqty,
+    real_t &trans, real_t &transAll, real_t &interp, real_t &interpAll,
+    real_t &coeff, real_t &coeffAll
+) {
+    trans = transAll = interp = interpAll = coeff = coeffAll = 0;
+    FVM::UnknownQuantityHandler *u = eqsys->GetUnknownHandler();
+    if (!u->HasUnknown(uqty))
+        return;
+
+    const len_t id = u->GetUnknownID(uqty);
+    const FVM::Operator *op = eqsys->GetOperator(id, id);
+    if (op == nullptr)
+        return;
+
+    const real_t nCells = (real_t)u->GetUnknown(id)->NumberOfElements();
+    for (const FVM::LinearTransientTerm *t : op->GetTransientTerms()) {
+        trans    += t->GetNumberOfStoredWeights()*sizeof(real_t);
+        transAll += nCells*sizeof(real_t);
+    }
+
+    FVM::AdvectionDiffusionTerm *adt = op->GetAdvectionDiffusion();
+    if (adt == nullptr)
+        return;
+
+    FVM::AdvectionInterpolationCoefficient *deltas[] = {
+        adt->GetInterpolationCoeffR(), adt->GetInterpolationCoeff1(), adt->GetInterpolationCoeff2()
+    };
+    for (FVM::AdvectionInterpolationCoefficient *d : deltas) {
+        // Per face: the coefficients and a pointer to them
+        const real_t perFace = d->GetStencilSize()*sizeof(real_t) + sizeof(real_t*);
+        interp    += d->GetNumberOfStoredFaces()*perFace*(d->StoresJacobian() ? 2 : 1);
+        interpAll += d->GetNumberOfFaces()*perFace*2;
+    }
+
+    // XXX here we assume that all momentum grids are the same
+    FVM::Grid *grid = u->GetUnknown(id)->GetGrid();
+    const real_t
+        nr  = grid->GetNr(),
+        np1 = grid->GetMomentumGrid(0)->GetNp1(),
+        np2 = grid->GetMomentumGrid(0)->GetNp2();
+    const real_t nR = (nr+1)*np1*np2, n1 = nr*(np1+1)*np2, n2 = nr*np1*(np2+1);
+
+    coeff = (adt->FVM::AdvectionTerm::GetNumberOfStoredCoefficients()
+           + adt->FVM::DiffusionTerm::GetNumberOfStoredCoefficients())*sizeof(real_t);
+    coeffAll = ((nR + n1 + n2 + nr*np2) + (nR + 2*n1 + 2*n2))*sizeof(real_t);
+}
+
+/**
  * Print, and save to '<prefix>memory.txt', the memory used by each rank:
- * the values of the collision quantities (exact) and the whole process
- * (resident set size, current and peak).
+ * the values of the collision quantities, the transient weights and the
+ * interpolation coefficients of the kinetic operators (exact), and the
+ * whole process (resident set size, current and peak).
  */
 static void SaveMemory(const string &prefix, EquationSystem *eqsys) {
     int rank, size;
@@ -206,24 +277,51 @@ static void SaveMemory(const string &prefix, EquationSystem *eqsys) {
         reAll = CollisionValueBytes(eqsys->GetRunawayCollisionHandler(), eqsys->GetRunawayGrid(), true);
     }
 
-    // Resident set size from Linux: current from /proc/self/statm (second
-    // field, in pages), peak from getrusage (ru_maxrss, in kB).
-    // (PetscMemoryGetCurrentUsage() is not used: without
-    // PETSC_USE_PROCFS_FOR_SIZE it returns ru_maxrss, i.e. the peak.)
-    real_t current = 0;
-    if (FILE *statm = fopen("/proc/self/statm", "r")) {
-        unsigned long size, resident;
-        if (fscanf(statm, "%lu %lu", &size, &resident) == 2)
-            current = (real_t)resident*sysconf(_SC_PAGESIZE);
-        fclose(statm);
+    // Operators of f_hot and f_re
+    real_t trans = 0, transAll = 0, interp = 0, interpAll = 0, coeff = 0, coeffAll = 0;
+    for (const string &uqty : {string(OptionConstants::UQTY_F_HOT), string(OptionConstants::UQTY_F_RE)}) {
+        real_t t, tAll, d, dAll, c, cAll;
+        OperatorBytes(eqsys, uqty, t, tAll, d, dAll, c, cAll);
+        trans += t, transAll += tAll, interp += d, interpAll += dAll, coeff += c, coeffAll += cAll;
     }
-    struct rusage usage;
-    getrusage(RUSAGE_SELF, &usage);
-    const real_t peak = (real_t)usage.ru_maxrss*1024.0;
 
-    real_t mine[4] = {hot, re, current, peak};
-    vector<real_t> all(rank == 0 ? 4*size : 0);
-    MPI_Gather(mine, 4, MPIU_REAL, all.data(), 4, MPIU_REAL, 0, PETSC_COMM_WORLD);
+    // Whole process
+    real_t current, peak;
+    GetProcessMemory(current, peak);
+
+    // PETSc matrix of the solver (the rows of this rank)
+    real_t matNz = 0, matNzUsed = 0, matBytes = 0, matInfoBytes = 0;
+    if (FVM::BlockMatrix *bm = eqsys->GetSolver()->GetMatrix()) {
+        MatInfo info;
+        MatGetInfo(bm->mat(), MAT_LOCAL, &info);
+        PetscInt rstart, nloc;
+        bm->GetOwnershipRange(&rstart, &nloc);
+        matNz = info.nz_allocated;
+        matNzUsed = info.nz_used;
+        matInfoBytes = info.memory;
+        // AIJ storage: a value and a column index per allocated non-zero,
+        // and about three integers per row (row start, lengths, diagonal)
+        matBytes = matNz*(sizeof(PetscScalar) + sizeof(PetscInt)) + 3.0*nloc*sizeof(PetscInt);
+    }
+
+    const int NV = 11;
+    real_t mine[NV] = {hot, re, trans, interp, coeff, current, peak, matNz, matNzUsed, matBytes, matInfoBytes};
+    vector<real_t> all(rank == 0 ? NV*size : 0);
+    MPI_Gather(mine, NV, MPIU_REAL, all.data(), NV, MPIU_REAL, 0, PETSC_COMM_WORLD);
+
+    // Memory at each recorded stage of the construction (the same stages
+    // on every rank): [stage][rank], current and peak
+    const vector<ProcessMemoryRecord> &stages = ProcessMemoryLog();
+    int nStages = (int)stages.size(), nStagesMin;
+    MPI_Allreduce(&nStages, &nStagesMin, 1, MPI_INT, MPI_MIN, PETSC_COMM_WORLD);
+    vector<real_t> stageMine(2*nStagesMin);
+    for (int k = 0; k < nStagesMin; k++) {
+        stageMine[2*k]   = stages[k].current;
+        stageMine[2*k+1] = stages[k].peak;
+    }
+    vector<real_t> stageAll(rank == 0 ? 2*nStagesMin*size : 0);
+    MPI_Gather(stageMine.data(), 2*nStagesMin, MPIU_REAL, stageAll.data(), 2*nStagesMin, MPIU_REAL, 0, PETSC_COMM_WORLD);
+
     if (rank != 0)
         return;
 
@@ -234,20 +332,56 @@ static void SaveMemory(const string &prefix, EquationSystem *eqsys) {
             continue;
         fprintf(f, "Memory per rank [MB] (%d rank%s)\n", size, size == 1 ? "" : "s");
         fprintf(f, "  collision values: exact, values of lnLambdaEE/EI, nuS, nuD, nuPar on the p1/p2 flux grids\n");
+        fprintf(f, "  transient:        exact, weights of the transient terms of f_hot and f_re\n");
+        fprintf(f, "  interpolation:    exact, advection interpolation coefficients (r, p1, p2) of f_hot and f_re\n");
+        fprintf(f, "  adv/diff coeff.:  exact, advection and diffusion coefficients of f_hot and f_re\n");
         fprintf(f, "  process RSS:      whole process, current (/proc/self/statm) and peak (getrusage)\n");
-        fprintf(f, "%6s  %14s  %14s  %14s  %12s  %12s\n",
-            "rank", "coll. hottail", "coll. runaway", "coll. total", "RSS", "peak RSS");
-        real_t sumHot = 0, sumRe = 0;
+        fprintf(f, "%6s  %14s  %14s  %14s  %12s  %14s  %16s  %12s  %12s\n",
+            "rank", "coll. hottail", "coll. runaway", "coll. total", "transient", "interpolation",
+            "adv/diff coeff.", "RSS", "peak RSS");
+        real_t sum[5] = {0, 0, 0, 0, 0};
         for (int r = 0; r < size; r++) {
-            const real_t *v = &all[4*r];
-            fprintf(f, "%6d  %14.3f  %14.3f  %14.3f  %12.1f  %12.1f\n",
-                r, v[0]/MB, v[1]/MB, (v[0]+v[1])/MB, v[2]/MB, v[3]/MB);
-            sumHot += v[0];
-            sumRe  += v[1];
+            const real_t *v = &all[NV*r];
+            fprintf(f, "%6d  %14.3f  %14.3f  %14.3f  %12.3f  %14.3f  %16.3f  %12.1f  %12.1f\n",
+                r, v[0]/MB, v[1]/MB, (v[0]+v[1])/MB, v[2]/MB, v[3]/MB, v[4]/MB, v[5]/MB, v[6]/MB);
+            for (int k = 0; k < 5; k++)
+                sum[k] += v[k];
         }
-        fprintf(f, "%6s  %14.3f  %14.3f  %14.3f\n", "sum", sumHot/MB, sumRe/MB, (sumHot+sumRe)/MB);
-        fprintf(f, "%6s  %14.3f  %14.3f  %14.3f   (all radii on one rank)\n",
-            "serial", hotAll/MB, reAll/MB, (hotAll+reAll)/MB);
+        fprintf(f, "%6s  %14.3f  %14.3f  %14.3f  %12.3f  %14.3f  %16.3f\n",
+            "sum", sum[0]/MB, sum[1]/MB, (sum[0]+sum[1])/MB, sum[2]/MB, sum[3]/MB, sum[4]/MB);
+        fprintf(f, "%6s  %14.3f  %14.3f  %14.3f  %12.3f  %14.3f  %16.3f   (one rank, before distribution)\n",
+            "serial", hotAll/MB, reAll/MB, (hotAll+reAll)/MB, transAll/MB, interpAll/MB, coeffAll/MB);
+
+        // Matrix
+        fprintf(f, "\nPETSc matrix of the solver, rows of each rank\n");
+        fprintf(f, "  storage: nz allocated x (value + column index) + 3 integers per row;"
+                   " MatGetInfo memory: as reported by PETSc (0 if not tracked)\n");
+        fprintf(f, "%6s  %14s  %14s  %14s  %16s\n", "rank", "nz allocated", "nz used", "storage [MB]", "MatGetInfo [MB]");
+        real_t matSum = 0;
+        for (int r = 0; r < size; r++) {
+            const real_t *v = &all[NV*r];
+            fprintf(f, "%6d  %14.0f  %14.0f  %14.3f  %16.3f\n", r, v[7], v[8], v[9]/MB, v[10]/MB);
+            matSum += v[9];
+        }
+        fprintf(f, "%6s  %14s  %14s  %14.3f\n", "sum", "", "", matSum/MB);
+
+        // Stages
+        fprintf(f, "\nResident set size at the end of each stage of the construction [MB]\n");
+        fprintf(f, "  min/max: over the ranks; added: largest increase on a rank since the previous stage\n");
+        fprintf(f, "%-48s  %10s  %10s  %10s  %10s\n", "stage", "RSS min", "RSS max", "added", "peak max");
+        for (int k = 0; k < nStagesMin; k++) {
+            real_t lo = 0, hi = 0, added = 0, pk = 0;
+            for (int r = 0; r < size; r++) {
+                const real_t c = stageAll[2*nStagesMin*r + 2*k];
+                const real_t prev = (k > 0 ? stageAll[2*nStagesMin*r + 2*(k-1)] : 0);
+                lo = (r == 0 ? c : min(lo, c));
+                hi = max(hi, c);
+                added = max(added, c - prev);
+                pk = max(pk, stageAll[2*nStagesMin*r + 2*k+1]);
+            }
+            fprintf(f, "%-48s  %10.1f  %10.1f  %10.1f  %10.1f\n",
+                stages[k].stage.c_str(), lo/MB, hi/MB, added/MB, pk/MB);
+        }
     }
     if (files[1] != nullptr) {
         fclose(files[1]);
@@ -347,6 +481,7 @@ int main(int argc, char *argv[]) {
     }
 
     dream_initialize();
+    RecordProcessMemory("test: MPI_Init + dream_initialize");
 
     char dir[PETSC_MAX_PATH_LEN] = ".";
     PetscOptionsGetString(NULL, NULL, "-cq_dir", dir, sizeof(dir), NULL);
@@ -358,6 +493,7 @@ int main(int argc, char *argv[]) {
         // Same construction as dreami
         Settings *settings = SimulationGenerator::CreateSettings();
         SettingsSFile::LoadSettings(settings, argv[1]);
+        RecordProcessMemory("test: settings loaded");
         sim = SimulationGenerator::ProcessSettings(settings);
 
         EquationSystem *eqsys = sim->GetEquationSystem();
@@ -366,13 +502,12 @@ int main(int argc, char *argv[]) {
             cout << "The solver has no matrix: the collision quantities "
                     "keep all radii on every rank." << endl;
 
-        // First rebuild of the collision quantities, as in
-        // Solver::RebuildTerms*()
-        solver->SetCollisionQuantityLocalRange();
-        if (eqsys->GetHotTailCollisionHandler() != nullptr)
-            eqsys->GetHotTailCollisionHandler()->Rebuild();
-        if (eqsys->GetRunawayCollisionHandler() != nullptr)
-            eqsys->GetRunawayCollisionHandler()->Rebuild();
+        // First rebuild done by the solver: the collision quantities and
+        // the transient, advection-diffusion and boundary terms, each on
+        // the rows of this rank. (The time step only enters the matrix,
+        // not what is stored.)
+        solver->RebuildTermsTransientAdvectionDiffusion(0, 1);
+        RecordProcessMemory("test: first rebuild");
 
         SaveMemory(prefix, eqsys);
 

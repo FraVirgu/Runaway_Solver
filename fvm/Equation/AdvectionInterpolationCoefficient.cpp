@@ -40,7 +40,9 @@ AdvectionInterpolationCoefficient::~AdvectionInterpolationCoefficient()
 }
 
 /**
- * To be called when grids are rebuilt; allocates and initializes interpolation coefficients
+ * To be called when grids are rebuilt; sets the grid sizes. The
+ * coefficients themselves are allocated by the next 'SetCoefficient()',
+ * for the faces of the cells owned by this rank (see 'AllocateLocal()').
  */
 bool AdvectionInterpolationCoefficient::GridRebuilt()
 {
@@ -48,44 +50,101 @@ bool AdvectionInterpolationCoefficient::GridRebuilt()
     this->nr = grid->GetNr() + (fgType == FLUXGRIDTYPE_RADIAL);
     n1 = new len_t[nr];
     n2 = new len_t[nr];
-    n1[0] = grid->GetNp1(0 * (fgType != FLUXGRIDTYPE_RADIAL)) + (fgType == FLUXGRIDTYPE_P1);
-    n2[0] = grid->GetNp2(0 * (fgType != FLUXGRIDTYPE_RADIAL)) + (fgType == FLUXGRIDTYPE_P2);
-    len_t n1n2 = n1[0] * n2[0];
-
-    deltas = new real_t **[nr];
-    deltas[0] = new real_t *[nr * n1n2];
-    deltas[0][0] = new real_t[nr * n1n2 * 2 * STENCIL_WIDTH];
-
-    deltas_jac = new real_t **[nr];
-    deltas_jac[0] = new real_t *[nr * n1n2];
-    deltas_jac[0][0] = new real_t[nr * n1n2 * 2 * STENCIL_WIDTH];
-
-    for (len_t i = 1; i < n1n2; i++)
-    {
-        deltas[0][i] = deltas[0][i - 1] + 2 * STENCIL_WIDTH;
-        deltas_jac[0][i] = deltas_jac[0][i - 1] + 2 * STENCIL_WIDTH;
-    }
-    for (len_t ir = 1; ir < nr; ir++)
+    for (len_t ir = 0; ir < nr; ir++)
     {
         // XXX: If radial flux grid, assume same momentum grid at all radii
         n1[ir] = grid->GetNp1(ir * (fgType != FLUXGRIDTYPE_RADIAL)) + (fgType == FLUXGRIDTYPE_P1);
         n2[ir] = grid->GetNp2(ir * (fgType != FLUXGRIDTYPE_RADIAL)) + (fgType == FLUXGRIDTYPE_P2);
-
-        deltas[ir] = deltas[ir - 1] + n1n2;
-        deltas[ir][0] = deltas[ir - 1][n1n2 - 1] + 2 * STENCIL_WIDTH;
-
-        deltas_jac[ir] = deltas_jac[ir - 1] + n1n2;
-        deltas_jac[ir][0] = deltas_jac[ir - 1][n1n2 - 1] + 2 * STENCIL_WIDTH;
-        for (len_t i = 1; i < n1n2; i++)
-        {
-            deltas[ir][i] = deltas[ir][i - 1] + 2 * STENCIL_WIDTH;
-            deltas_jac[ir][i] = deltas_jac[ir][i - 1] + 2 * STENCIL_WIDTH;
-        }
     }
 
-    ResetCoefficient();
     builtForZeroA = false;
     return true;
+}
+
+/**
+ * Returns the lines [jlo, jhi) of index 'ir' of this flux grid to store:
+ * all the lines containing faces of the cells owned by this rank (whole
+ * lines, so that a few faces of cells of other ranks are also stored on
+ * the lines where the ownership starts and ends). Empty if there are none.
+ */
+void AdvectionInterpolationCoefficient::GetStoredLines(len_t ir, len_t &jlo, len_t &jhi) const
+{
+    len_t ilo, ihi;
+    if (!GetFaceRange(ir, ilo, ihi, jlo, jhi))
+        jlo = jhi = 0;
+}
+
+/**
+ * True if the coefficients are allocated for the current local range
+ * (and, for the jacobian, for the current jacobian mode).
+ */
+bool AdvectionInterpolationCoefficient::LayoutIsCurrent() const
+{
+    if (deltas == nullptr || storesJacobian != !JacobianIsSame() || lineLo.size() != nr)
+        return false;
+
+    for (len_t ir = 0; ir < nr; ir++)
+    {
+        len_t jlo, jhi;
+        GetStoredLines(ir, jlo, jhi);
+        if (jlo != lineLo[ir] || jhi != lineHi[ir])
+            return false;
+    }
+    return true;
+}
+
+/**
+ * Allocates the coefficients on the lines containing faces of the cells
+ * owned by this rank (see 'GetStoredLines()'), and sets them to 0.
+ *
+ * All stored faces are in one block, and deltas[ir] points to the face
+ * (ir, i=0, j=0) of that block, so that deltas[ir][j*n1[ir]+i] is face
+ * (ir, i, j) for the stored lines j (as PETSc does for the local part of
+ * a distributed array). deltas[ir] is nullptr at indices with no stored
+ * line.
+ */
+void AdvectionInterpolationCoefficient::AllocateLocal()
+{
+    DeallocateLocal();
+
+    const len_t W = 2 * STENCIL_WIDTH;
+    lineLo.resize(nr);
+    lineHi.resize(nr);
+    nStoredFaces = 0;
+    for (len_t ir = 0; ir < nr; ir++)
+    {
+        GetStoredLines(ir, lineLo[ir], lineHi[ir]);
+        nStoredFaces += (lineHi[ir] - lineLo[ir]) * n1[ir];
+    }
+
+    storesJacobian = !JacobianIsSame();
+
+    auto allocate = [&](real_t ***&d, real_t **&faces, real_t *&data)
+    {
+        d = new real_t **[nr];
+        faces = new real_t *[nStoredFaces];
+        data = new real_t[nStoredFaces * W]();
+        for (len_t f = 0; f < nStoredFaces; f++)
+            faces[f] = data + f * W;
+
+        len_t off = 0;
+        for (len_t ir = 0; ir < nr; ir++)
+        {
+            if (lineLo[ir] == lineHi[ir])
+            {
+                d[ir] = nullptr;
+                continue;
+            }
+            d[ir] = faces + off - lineLo[ir] * n1[ir];
+            off += (lineHi[ir] - lineLo[ir]) * n1[ir];
+        }
+    };
+
+    allocate(deltas, deltaFaces, deltaData);
+    if (storesJacobian)
+        allocate(deltas_jac, deltaFacesJac, deltaDataJac);
+
+    hasNonTrivialJacobian = false;
 }
 
 /**
@@ -93,13 +152,11 @@ bool AdvectionInterpolationCoefficient::GridRebuilt()
  */
 void AdvectionInterpolationCoefficient::ResetCoefficient()
 {
-    for (len_t ir = 0; ir < nr; ir++)
-        for (len_t i = 0; i < n1[ir] * n2[ir]; i++)
-            for (len_t k = 0; k < 2 * STENCIL_WIDTH; k++)
-            {
-                deltas[ir][i][k] = 0;
-                deltas_jac[ir][i][k] = 0;
-            }
+    const len_t N = nStoredFaces * 2 * STENCIL_WIDTH;
+    for (len_t k = 0; deltaData != nullptr && k < N; k++)
+        deltaData[k] = 0;
+    for (len_t k = 0; deltaDataJac != nullptr && k < N; k++)
+        deltaDataJac[k] = 0;
     hasNonTrivialJacobian = false;
 }
 
@@ -240,6 +297,10 @@ void AdvectionInterpolationCoefficient::SetCoefficient(real_t **A, real_t ** /*D
 {
     if (!hasBeenInitialized)
         hasBeenInitialized = GridRebuilt();
+
+    // (Re)allocate if the cells owned by this rank have changed
+    if (!LayoutIsCurrent())
+        AllocateLocal();
     else
         ResetLocalCoefficient();
     // The coefficients for the jacobian are only stored if they differ
@@ -717,24 +778,34 @@ void AdvectionInterpolationCoefficient::SetNNZ(adv_interpolation adv_i)
  */
 void AdvectionInterpolationCoefficient::Deallocate()
 {
-    if (deltas != nullptr)
-    {
-        delete[] deltas[0][0];
-        delete[] deltas[0];
-        delete[] deltas;
-    }
-    if (deltas_jac != nullptr)
-    {
-        delete[] deltas_jac[0][0];
-        delete[] deltas_jac[0];
-        delete[] deltas_jac;
-    }
+    DeallocateLocal();
 
     if (n1 != nullptr)
     {
         delete[] n1;
         delete[] n2;
+        n1 = n2 = nullptr;
     }
+}
+
+/**
+ * Deallocates the coefficients (see 'AllocateLocal()').
+ */
+void AdvectionInterpolationCoefficient::DeallocateLocal()
+{
+    delete[] deltas;
+    delete[] deltaFaces;
+    delete[] deltaData;
+    delete[] deltas_jac;
+    delete[] deltaFacesJac;
+    delete[] deltaDataJac;
+
+    deltas = deltas_jac = nullptr;
+    deltaFaces = deltaFacesJac = nullptr;
+    deltaData = deltaDataJac = nullptr;
+    nStoredFaces = 0;
+    lineLo.clear();
+    lineHi.clear();
 }
 
 /**

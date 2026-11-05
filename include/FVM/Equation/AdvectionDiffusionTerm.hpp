@@ -15,10 +15,27 @@ namespace DREAM::FVM {
         std::vector<AdvectionTerm*> advectionterms;
         std::vector<DiffusionTerm*> diffusionterms;
 
+        // F1 and D11 on the upper p boundary (last p1 face) of every xi line
+        // at every radius, [offset(ir) + j], complete on every rank (see
+        // GatherUpperBoundaryCoefficients())
+        std::vector<real_t> upperF1, upperD11;
+        std::vector<len_t> upperOffset;
+
     public:
+        // The coefficients themselves are allocated by the first Rebuild(),
+        // for the cells owned by this rank (see UpdateCoefficientLayout())
         AdvectionDiffusionTerm(Grid *g)
-            : AdvectionTerm(g, true), DiffusionTerm(g, true) {}
+            : AdvectionTerm(g, false), DiffusionTerm(g, false) {
+            this->AdvectionTerm::AllocateCoefficientTables();
+            this->DiffusionTerm::AllocateCoefficientTables();
+            this->AdvectionTerm::AllocateInterpolationCoefficients();
+        }
         ~AdvectionDiffusionTerm();
+
+        // F1 and D11 on the upper p boundary of xi line j at radius ir (on
+        // every rank, once GatherUpperBoundaryCoefficients() has been called)
+        real_t GetUpperBoundaryF1(const len_t ir, const len_t j) const { return upperF1[upperOffset[ir] + j]; }
+        real_t GetUpperBoundaryD11(const len_t ir, const len_t j) const { return upperD11[upperOffset[ir] + j]; }
         
         void Add(AdvectionTerm*);
         void Add(DiffusionTerm*);

@@ -197,6 +197,20 @@ void PXiExternalLoss::__SetElements(
             dd = dp[np-1] / dp[np-2];
 
         for (len_t j = 0; j < nxi; j++) {
+            // The coefficients (advection, diffusion and interpolation) are
+            // only stored on the xi lines with cells owned by this rank,
+            // which contain all the rows of the distribution function set
+            // by this rank
+            if (!oprtr->GetInterpolationCoeff1()->IsStored(ir, j)) {
+                if (this->boundary == BOUNDARY_FLUID)
+                    throw FVMException(
+                        "PXiExternalLoss: the flux into a fluid quantity needs the "
+                        "coefficients of all radii, which are only stored on the "
+                        "radii of this rank."
+                    );
+                continue;
+            }
+
             // Select correct indices/volume elements, depending on
             // whether we're building
             len_t idx1, idx2 = offset + j*np + (np-1);

@@ -117,8 +117,19 @@ namespace DREAM::FVM {
         len_t nr;
         len_t *n1 = nullptr;
         len_t *n2 = nullptr;
+        // Interpolation coefficients deltas[ir][j*n1[ir]+i][k], stored only on
+        // the lines j in [lineLo[ir], lineHi[ir]) that contain faces of cells
+        // owned by this rank: deltas[ir] is nullptr at other indices ir, and
+        // is shifted so that it can be indexed with the global j (see
+        // AllocateLocal()). The coefficients for the jacobian are only stored
+        // if they differ from the coefficients themselves (see JacobianIsSame()).
         real_t ***deltas = nullptr;
         real_t ***deltas_jac = nullptr;
+        real_t **deltaFaces = nullptr, *deltaData = nullptr;
+        real_t **deltaFacesJac = nullptr, *deltaDataJac = nullptr;
+        len_t nStoredFaces = 0;
+        std::vector<len_t> lineLo, lineHi;
+        bool storesJacobian = false;
         real_t *delta_prev;
         real_t *delta_tmp;
         len_t id_unknown;
@@ -152,6 +163,10 @@ namespace DREAM::FVM {
         bool builtForZeroA = false;
 
         void Deallocate();
+        void DeallocateLocal();
+        void AllocateLocal();
+        bool LayoutIsCurrent() const;
+        void GetStoredLines(len_t ir, len_t &jlo, len_t &jhi) const;
 
         bool GetFaceRange(len_t ir, len_t &ilo, len_t &ihi, len_t &jlo, len_t &jhi) const;
         void ResetLocalCoefficient();
@@ -207,6 +222,24 @@ namespace DREAM::FVM {
 
         void SetLocalRange(len_t ir, len_t i1lo, len_t i1hi, len_t i2lo, len_t i2hi);
         bool IsUpToDate(real_t **A) const;
+
+        // Number of faces of this flux grid, and of faces whose coefficients
+        // are stored by this rank (for each, 2*STENCIL_WIDTH coefficients
+        // and a pointer, twice if the jacobian coefficients are stored)
+        len_t GetNumberOfFaces() const {
+            len_t n = 0;
+            for (len_t ir = 0; n1 != nullptr && ir < nr; ir++)
+                n += n1[ir]*n2[ir];
+            return n;
+        }
+        len_t GetNumberOfStoredFaces() const { return nStoredFaces; }
+        bool StoresJacobian() const { return deltas_jac != nullptr; }
+        len_t GetStencilSize() const { return 2*STENCIL_WIDTH; }
+
+        // True if the coefficients of line j at index ir are stored on this rank
+        bool IsStored(len_t ir, len_t j) const {
+            return deltas != nullptr && ir < lineLo.size() && j >= lineLo[ir] && j < lineHi[ir];
+        }
 
         // True if the coefficients used for the jacobian are always equal to
         // the coefficients themselves. They are then not stored separately.

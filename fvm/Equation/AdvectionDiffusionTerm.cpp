@@ -179,6 +179,11 @@ void AdvectionDiffusionTerm::Rebuild(const real_t t, const real_t dt, UnknownQua
     const bool log = TermLog::rebuild();
     TermLog::clk::time_point t0 = TermLog::clk::now();
 
+    // Allocate the coefficients for the cells owned by this rank (once the
+    // matrix rows of this rank are known, and again if they change)
+    this->AdvectionTerm::UpdateCoefficientLayout();
+    this->DiffusionTerm::UpdateCoefficientLayout();
+
     this->ResetCoefficients();
     if (log)
         printf("[rebuild]                 reset coefficients %38s %9.3f ms\n", "", TermLog::ms(t0, TermLog::clk::now()));
@@ -313,34 +318,36 @@ void AdvectionDiffusionTerm::PrintCoefficientNorms(const real_t dt)
 }
 
 /**
- * Make the coefficients F1 and D11 on the upper p boundary (the last p1
- * face, i = np1, of every xi line at every radius) complete on every rank.
+ * Collect the coefficients F1 and D11 on the upper p boundary (the last p1
+ * face, i = np1, of every xi line at every radius) on every rank, in
+ * 'upperF1' and 'upperD11' (see GetUpperBoundaryF1/D11()).
  *
- * Each rank only builds the coefficients of the cells it owns, but the
- * boundary condition coupling two momentum grids
+ * Each rank only builds and stores the coefficients of the cells it owns,
+ * but the boundary condition coupling two momentum grids
  * (PXiExternalKineticKinetic) reads the coefficients of the lower grid
  * on this face when it sets the rows of the upper grid, which are in
  * general owned by another rank.
  *
  * Every rank contributes the faces whose cell (i = np1-1) it owns, so
  * that each value comes from exactly one rank, and the sum over all
- * ranks is written back on every rank.
+ * ranks is kept on every rank.
  *
  * Collective: must be called by all ranks.
  */
 void AdvectionDiffusionTerm::GatherUpperBoundaryCoefficients() {
-    PetscMPIInt nRanks;
-    MPI_Comm_size(PETSC_COMM_WORLD, &nRanks);
-    if (nRanks == 1)
-        return;
-
     const len_t nr = this->AdvectionTerm::nr;
     const len_t *n1 = this->AdvectionTerm::n1;
     const len_t *n2 = this->AdvectionTerm::n2;
 
+    const bool adv = (this->advectionterms.size() > 0);
+    const bool diff = (this->diffusionterms.size() > 0);
+
     len_t nFaces = 0;
-    for (len_t ir = 0; ir < nr; ir++)
+    upperOffset.resize(nr);
+    for (len_t ir = 0; ir < nr; ir++) {
+        upperOffset[ir] = nFaces;
         nFaces += n2[ir];
+    }
 
     // [F1 of all faces, D11 of all faces]
     std::vector<real_t> buf(2*nFaces, 0);
@@ -352,22 +359,21 @@ void AdvectionDiffusionTerm::GatherUpperBoundaryCoefficients() {
             if (!this->AdvectionTerm::IsLocalRow(offset + j*np1 + np1-1))
                 continue;
 
-            buf[k]        = this->f1[ir][j*(np1+1) + np1];
-            buf[nFaces+k] = this->d11[ir][j*(np1+1) + np1];
+            if (adv)
+                buf[k]        = this->f1[ir][j*(np1+1) + np1];
+            if (diff)
+                buf[nFaces+k] = this->d11[ir][j*(np1+1) + np1];
         }
         offset += np1*n2[ir];
     }
 
-    MPI_Allreduce(MPI_IN_PLACE, buf.data(), (int)(2*nFaces), MPI_DOUBLE, MPI_SUM, PETSC_COMM_WORLD);
+    PetscMPIInt nRanks;
+    MPI_Comm_size(PETSC_COMM_WORLD, &nRanks);
+    if (nRanks > 1)
+        MPI_Allreduce(MPI_IN_PLACE, buf.data(), (int)(2*nFaces), MPI_DOUBLE, MPI_SUM, PETSC_COMM_WORLD);
 
-    k = 0;
-    for (len_t ir = 0; ir < nr; ir++) {
-        const len_t np1 = n1[ir];
-        for (len_t j = 0; j < n2[ir]; j++, k++) {
-            this->f1[ir][j*(np1+1) + np1]  = buf[k];
-            this->d11[ir][j*(np1+1) + np1] = buf[nFaces+k];
-        }
-    }
+    upperF1.assign(buf.begin(), buf.begin() + nFaces);
+    upperD11.assign(buf.begin() + nFaces, buf.end());
 }
 
 /**
