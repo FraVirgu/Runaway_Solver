@@ -61,7 +61,7 @@ export MKL_DYNAMIC=FALSE
 export PETSC_OPTIONS=${PETSC_OPTIONS:-"-dream_kinetic_only -dream_log_rebuild 3  -dream_log_matrix -dream_scale "diag""}
 export PETSC_OPTIONS="$PETSC_OPTIONS -dream_save_system"
 
-LEVEL=${LEVEL:-1}
+LEVEL=${LEVEL:-2}
 PARALLEL=${PARALLEL:-0}
 
 DREAM_ROOT=${DREAM_ROOT:-$HOME/DREAM}
