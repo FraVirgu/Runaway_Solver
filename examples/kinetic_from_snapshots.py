@@ -4,12 +4,14 @@
 # (written by DATASET/extract_snapshots.py), one independent run per
 # snapshot.
 #
-# Each run evolves f_hot and f_re ONE time step, with the background held
-# fixed at the snapshot values:
+# Each run evolves f_hot and f_re over the time step dt of the source
+# simulation at the snapshot, with the background held fixed at the
+# snapshot values:
 #
 #   E_field(r), T_cold(r), n_cold(r), n_i(Z0, r)    prescribed, from state.h5
-#   dt                                              time step of the source
-#                                                   simulation at the snapshot
+#
+# Injection snapshots take dt in NT_INJ (default 1) step; current-quench
+# snapshots (CQ_*) in NT_CQ (default 20) steps of dt/NT_CQ.
 #
 # The numerics are those of diff_grid_paper_kinetic_radial.py: two kinetic
 # grids of different resolution, Rechester-Rosenbluth transport plus radial
@@ -29,6 +31,7 @@
 #
 #   $ ./kinetic_from_snapshots.py                       # all snapshots
 #   $ SNAPSHOT=CQ_tf LEVEL=1 ./kinetic_from_snapshots.py
+#   $ NT_CQ=40 ./kinetic_from_snapshots.py              # CQ: 40 steps
 #   $ cd $DREAM_ROOT/build/iface && ./dreami dream_settings_kinetic_CQ_tf_L2.h5
 #
 # ###################################################################
@@ -95,6 +98,15 @@ AR_FACTOR = float(os.environ.get('AR_FACTOR', 10.0))
 # Shape of the initial runaway beam: e-folding momentum and pitch width.
 RE_PT  = float(os.environ.get('RE_PT', 10.0))
 RE_XIW = float(os.environ.get('RE_XIW', 0.05))
+
+# Number of time steps per run. The current-quench snapshots (CQ_*) use the
+# source simulation's dt (~1e-4 s), too long for a single kinetic step:
+# that interval is split into NT_CQ steps of dt/NT_CQ. Injection: NT_INJ.
+NT_CQ  = int(os.environ.get('NT_CQ', 20))
+NT_INJ = int(os.environ.get('NT_INJ', 1))
+
+def num_timesteps(name):
+    return NT_CQ if name.startswith('CQ') else NT_INJ
 
 p_re_init  = np.linspace(P_RE, P_MAX, 1001)
 xi_re_init = np.linspace(-1.0, 1.0,    801)
@@ -234,7 +246,7 @@ def make_settings(name, s, dt):
         addRadialAdvection(ds.eqsys.f_re.transport, ar, r)
 
     # -----------------------------------------------------------------
-    # Solver: one time step of the snapshot dt
+    # Solver: the snapshot dt, in num_timesteps(name) steps
     # -----------------------------------------------------------------
     ds.solver.setType(Solver.LINEAR_IMPLICIT)
     ds.solver.preconditioner.setEnabled(False)
@@ -245,7 +257,7 @@ def make_settings(name, s, dt):
     ds.other.include('fluid', 'nu_s', 'nu_D')
 
     ds.timestep.setTmax(dt)
-    ds.timestep.setNt(1)
+    ds.timestep.setNt(num_timesteps(name))
 
     ds.output.setTiming(stdout=True, file=True)
     return ds
@@ -280,15 +292,20 @@ for folder in folders:
 
     # The thermal bulk is resolved on the hot grid only if dp << p_th
     p_th = np.sqrt(2 * s['T_cold'].min() / mc2)
-    print(f'{name}:  dt = {dt:.4e} s   T_cold = {s["T_cold"].min():.3g}-{s["T_cold"].max():.3g} eV   '
+    nt = num_timesteps(name)
+    print(f'{name}:  dt = {dt:.4e} s in {nt} step(s) of {dt/nt:.4e} s   T_cold = {s["T_cold"].min():.3g}-{s["T_cold"].max():.3g} eV   '
           f'n_re max = {s["n_re"].max():.3e} m^-3')
     if P_RE / NP_HOT > p_th / 5:
         print(f'    WARNING: p_th = {p_th:.2e} at the coldest radius is not resolved by dp = {P_RE/NP_HOT:.2e}; '
               f'raise LEVEL (needs ~{int(np.ceil(5 * P_RE / p_th))} points in p)')
+    # Snapshot runaway density at every radius (initialises f_re)
+    print(f'    n_re(r) [m^-3]  ({s["n_re"].size} radii, r = {s["r"][0]:.3f}-{s["r"][-1]:.3f} m):')
+    for ir, (rr, nre) in enumerate(zip(s['r'], s['n_re'])):
+        print(f'      {ir:3d}  r = {rr:.4f} m   n_re = {nre:.4e}')
     print(f'    Wrote {settings_file}')
 
 with open(os.path.join(OUT_DIR, 'petsc_num_timesteps.txt'), 'w') as fh:
-    fh.write('1\n')
+    fh.write(f'{max(num_timesteps(os.path.basename(f)) for f in folders)}\n')
 
 print()
 print(f'Run:  cd {OUT_DIR} && ./dreami dream_settings_kinetic_<snapshot>_L{LEVEL}.h5')

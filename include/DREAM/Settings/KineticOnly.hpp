@@ -4,11 +4,13 @@
 /**
  * Helpers for the kinetic-only mode (PETSc option -dream_kinetic_only).
  *
- * In this mode the equation system contains the kinetic unknowns f_hot and
- * f_re only. Every other fluid and scalar unknown that would normally be
- * evolved (n_hot, n_re, j_hot, j_re, j_ohm, j_tot, psi_p, psi_edge, I_p,
- * n_tot, S_particle) is given a constant prescribed value instead of an
- * equation, so DREAM treats it as a trivial unknown. See
+ * In this mode the solver matrix contains the kinetic unknowns f_hot and
+ * f_re only. The other fluid and scalar unknowns (n_hot, n_re, n_tot, j_hot,
+ * j_re, j_ohm, j_tot, I_p, n_i, ...) keep their real DREAM equation, which
+ * is used only to initialise them from the input; they are left out of the
+ * matrix (EquationSystem::ProcessSystem()) and keep that initial value.
+ * psi_p, psi_edge and S_particle, whose DREAM initialisation is not
+ * available here, are given the constant 0 instead. See
  * SimulationGenerator::ConstructEquations() and
  * SolverLinearlyImplicit::initialize_kinetic_only().
  */

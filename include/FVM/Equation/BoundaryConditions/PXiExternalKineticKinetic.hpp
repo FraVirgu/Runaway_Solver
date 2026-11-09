@@ -18,7 +18,7 @@ namespace DREAM::FVM::BC {
         len_t id_f_low, id_f_upp;
         enum condition_type type;
 
-        const real_t *fLow, *fUpp;
+        const real_t *fLow=nullptr, *fUpp=nullptr;
 
         void __SetElements(
             std::function<void(const len_t, const len_t, const real_t)>,
@@ -53,6 +53,9 @@ namespace DREAM::FVM::BC {
 
         virtual bool AddToJacobianBlock(const len_t, const len_t, DREAM::FVM::Matrix*, const real_t*) override;
         virtual void AddToMatrixElements(DREAM::FVM::Matrix*, real_t*) override;
+        // Evaluate the flux with the current f_low and f_upp (used for the
+        // output quantity 'fluid/gammaFhot')
+        virtual void AddToVectorElements(real_t*, const real_t*) override;
         virtual void AddToVectorElements_c(
             real_t*, const real_t*,
             const real_t *const*, const real_t *const* df1,

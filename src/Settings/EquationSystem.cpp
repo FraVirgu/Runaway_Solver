@@ -133,66 +133,22 @@ EquationSystem *SimulationGenerator::ConstructEquationSystem(
 }
 
 /**
- * Kinetic-only mode (-dream_kinetic_only): the unknowns that would normally
- * be evolved besides f_hot and f_re get a constant value, in place of an
- * equation. They then do not appear in the solver matrices. The values
- * are the ones that go with the prescribed background (n_cold, T_cold,
- * E_field) at t = 0:
+ * Kinetic-only mode (-dream_kinetic_only): psi_p and psi_edge get the
+ * constant value 0 in place of an equation, so they do not appear in the
+ * solver matrices.
  *
- *   n_hot, n_re, j_hot, j_re, S_particle, psi_p, psi_edge   0
- *   n_tot                       n_cold   (charge neutrality, n_hot = n_re = 0)
- *   j_ohm = j_tot               E / eta, with the parallel Spitzer
- *                               resistivity eta = 5.26e-5 lnLambda / T^1.5
- *                               (Z = 1, T in eV, eta in Ohm m) and the NRL
- *                               lnLambda = 24 - ln(sqrt(n/cm^-3)/T)
- *   I_p                         integral of j_tot over the poloidal
- *                               cross section, sum_r j 2 pi r dr
+ * Their DREAM initialisation is a non-linear steady-state solve (Ampere's
+ * law, see ConstructEquation_psi_init_nl()), which is disabled in this
+ * EqsysInitializer, so the real equations cannot be used to initialise
+ * them. Nothing in the kinetic equations depends on them.
  *
- * (S_particle is set to its constant in ConstructEquation_f_hot().)
+ * All the other fluid unknowns (n_re, n_hot, n_tot, j_hot, j_re, j_ohm,
+ * j_tot, I_p) get their real DREAM equation; see ConstructEquations().
  */
-static void ConstructConstantFluidQuantities(EquationSystem *eqsys, Settings *s)
+static void ConstructConstantFluxQuantities(EquationSystem *eqsys)
 {
-    FVM::Grid *fluidGrid = eqsys->GetFluidGrid();
-    FVM::Grid *scalarGrid = eqsys->GetScalarGrid();
-    FVM::RadialGrid *rgrid = fluidGrid->GetRadialGrid();
-    const len_t nr = fluidGrid->GetNr();
-
-    // Prescribed background at t = 0
-    FVM::Interpolator1D *nIntp = SimulationGenerator::LoadDataRT_intp("eqsys/n_cold", rgrid, s);
-    FVM::Interpolator1D *TIntp = SimulationGenerator::LoadDataRT_intp("eqsys/T_cold", rgrid, s);
-    FVM::Interpolator1D *EIntp = SimulationGenerator::LoadDataRT_intp("eqsys/E_field", rgrid, s);
-    const real_t *n = nIntp->Eval(0);
-    const real_t *T = TIntp->Eval(0);
-    const real_t *E = EIntp->Eval(0);
-
-    real_t *ntot = new real_t[nr];
-    real_t *j = new real_t[nr];
-    real_t Ip = 0;
-    for (len_t ir = 0; ir < nr; ir++)
-    {
-        ntot[ir] = n[ir];
-        const real_t lnL = 24.0 - log(sqrt(n[ir] * 1e-6) / T[ir]);
-        const real_t eta = 5.26e-5 * lnL / (T[ir] * sqrt(T[ir]));
-        j[ir] = E[ir] / eta;
-        Ip += j[ir] * 2.0 * M_PI * rgrid->GetR(ir) * rgrid->GetDr(ir);
-    }
-
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_N_HOT), fluidGrid, 0.0, "n_hot = 0");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_N_RE), fluidGrid, 0.0, "n_re = 0");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_J_HOT), fluidGrid, 0.0, "j_hot = 0");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_J_RE), fluidGrid, 0.0, "j_re = 0");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_POL_FLUX), fluidGrid, 0.0, "psi_p = 0");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_PSI_EDGE), scalarGrid, 0.0, "psi_edge = 0");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_N_TOT), fluidGrid, ntot, "n_tot = n_cold");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_J_OHM), fluidGrid, j, "j_ohm = E/eta_Spitzer");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_J_TOT), fluidGrid, j, "j_tot = j_ohm");
-    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_I_P), scalarGrid, Ip, "I_p = integral(j_tot)");
-
-    delete[] ntot;
-    delete[] j;
-    delete nIntp;
-    delete TIntp;
-    delete EIntp;
+    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_POL_FLUX), eqsys->GetFluidGrid(), 0.0, "psi_p = 0");
+    SetConstantEquation(eqsys, eqsys->GetUnknownID(OptionConstants::UQTY_PSI_EDGE), eqsys->GetScalarGrid(), 0.0, "psi_edge = 0");
 }
 
 /**
@@ -300,17 +256,19 @@ void SimulationGenerator::ConstructEquations(
     {
         ConstructEquation_f_re(eqsys, s, oqty_terms, &transport_fre);
     }
+    // In kinetic-only mode the fluid unknowns below still get their real
+    // DREAM equation, so that the EqsysInitializer gives them the initial
+    // value the input asks for (n_re from eqsys/n_re/init or from the
+    // prescribed f_re, j_ohm = sigma*E, j_tot = j_ohm + j_hot + j_re, ...).
+    // EquationSystem::ProcessSystem() keeps them out of the solver matrix,
+    // so they are not evolved: they keep that initial value.
     ConstructEquation_E_field(eqsys, s, oqty_terms);
-    if (!kineticOnly)
-    {
-        ConstructEquation_j_hot(eqsys, s);
-        ConstructEquation_j_tot(eqsys, s);
-        ConstructEquation_j_ohm(eqsys, s);
-        ConstructEquation_j_re(eqsys, s);
-    }
+    ConstructEquation_j_hot(eqsys, s);
+    ConstructEquation_j_tot(eqsys, s);
+    ConstructEquation_j_ohm(eqsys, s);
+    ConstructEquation_j_re(eqsys, s);
     ConstructEquation_n_cold(eqsys, s);
-    if (!kineticOnly)
-        ConstructEquation_n_hot(eqsys, s);
+    ConstructEquation_n_hot(eqsys, s);
     ConstructEquation_T_cold(eqsys, s, adas, nist, amjuel, oqty_terms);
 
     if (spi_ablation_mode == OptionConstants::EQTERM_SPI_ABLATION_MODE_NGPS)
@@ -349,18 +307,36 @@ void SimulationGenerator::ConstructEquations(
     // either f_hot or f_re and must therefore be constructed
     // AFTER the calls to 'ConstructEquation_f_hot()' and
     // 'ConstructEquation_f_re()'.
+    ConstructEquation_n_re(eqsys, s, oqty_terms, transport_fre);
+
+    // Kinetic-only mode: n_re is not in the solver matrix, so the terms of
+    // its equation are never rebuilt. The f_hot -> f_re boundary flux that
+    // ConstructEquation_n_re() registers for the output quantity
+    // 'fluid/gammaFhot' (the electrons crossing from the hot-tail grid to
+    // the runaway grid) would then have no pointers to f_hot and f_re, and
+    // evaluating it in OtherQuantityHandler::StoreAll() segfaults.
+    // Its Rebuild() only stores these pointers, which stay valid for the
+    // whole run, so it is rebuilt once here; the coefficients are those of
+    // the f_hot operator, which is rebuilt at every step.
+    // The f_hot -> n_re flux (no runaway grid) reads the full coefficient
+    // arrays, which are distributed over the ranks, and is unregistered.
+    if (kineticOnly)
+    {
+        if (oqty_terms->f_re_f_hot_flux != nullptr)
+            oqty_terms->f_re_f_hot_flux->Rebuild(0, eqsys->GetUnknownHandler());
+        oqty_terms->n_re_f_hot_flux = nullptr;
+    }
+
     if (!kineticOnly)
     {
-        ConstructEquation_n_re(eqsys, s, oqty_terms, transport_fre);
-
         ConstructEquation_psi_p(eqsys, s);
         ConstructEquation_psi_edge(eqsys, s);
-
-        // Helper quantities
-        ConstructEquation_n_tot(eqsys, s);
     }
     else
-        ConstructConstantFluidQuantities(eqsys, s);
+        ConstructConstantFluxQuantities(eqsys);
+
+    // Helper quantities
+    ConstructEquation_n_tot(eqsys, s);
     OptionConstants::eqterm_hottail_mode hottail_mode = (enum OptionConstants::eqterm_hottail_mode)s->GetInteger("eqsys/n_re/hottail");
     OptionConstants::uqty_f_hot_dist_mode ht_dist_mode = (enum OptionConstants::uqty_f_hot_dist_mode)s->GetInteger("eqsys/f_hot/dist_mode");
     if (hottail_mode != OptionConstants::EQTERM_HOTTAIL_MODE_DISABLED && ht_dist_mode == OptionConstants::UQTY_F_HOT_DIST_MODE_NONREL)

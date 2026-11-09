@@ -20,7 +20,9 @@
  *   -dream_rbj_radii_per_block <n>   radial cells per block (default 1)
  *   -dream_rbj_ksp_*                 outer FGMRES (rtol 1e-10, restart 100)
  *   -dream_rbj_sub_ksp_*             inner GMRES  (rtol 1e-6, max 500 its)
- *   -dream_rbj_sub_pc_hypre_*        BoomerAMG of the blocks
+ *   -dream_rbj_sub_pc_hypre_*        BoomerAMG of the blocks (smoother:
+ *                                    Euclid ILU(1) by default, see
+ *                                    ConfigureSolver())
  */
 
 #include <algorithm>
@@ -184,6 +186,30 @@ void MIRadialBJ::ConfigureSolver() {
     // line overrides the defaults set above.
     KSPSetFromOptions(this->ksp);
     KSPSetUp(this->ksp);
+
+    // BoomerAMG smoother of the blocks: hypre's Euclid (parallel ILU) on all
+    // levels, as in Rudi et al., arXiv:2303.17019. The default smoother
+    // (hybrid Gauss-Seidel) stalls on the strongly pitch-anisotropic,
+    // nonsymmetric blocks of cold, collisional snapshots (e.g. current
+    // quench), where the inner GMRES did not converge in 500 iterations;
+    // with Euclid it takes ~10. BoomerAMG has no setter for this outside the
+    // options database, so the default is put there, unless the user gave
+    // -dream_rbj_sub_pc_hypre_boomeramg_smooth_type (e.g. ILU) already.
+    PetscBool smoothSet;
+    PetscOptionsHasName(NULL, NULL, "-dream_rbj_sub_pc_hypre_boomeramg_smooth_type", &smoothSet);
+    if (!smoothSet)
+        PetscOptionsSetValue(NULL, "-dream_rbj_sub_pc_hypre_boomeramg_smooth_type", "Euclid");
+
+    // Euclid fill level: ILU(1) instead of hypre's ILU(0). With ILU(0), the
+    // inner GMRES breaks down on some radii of the current-quench snapshot
+    // with the strongest field (CQ_t29ms: E ~ 31 V/m, c_xi ~ 5e5) and the
+    // block Jacobi PC fails; ILU(1) converges there (11 outer iterations)
+    // and is as fast or faster on the other snapshots (injection_t0/tf,
+    // CQ_tf at L1). Override with -dream_rbj_sub_pc_hypre_boomeramg_eu_level.
+    PetscBool euLevelSet;
+    PetscOptionsHasName(NULL, NULL, "-dream_rbj_sub_pc_hypre_boomeramg_eu_level", &euLevelSet);
+    if (!euLevelSet)
+        PetscOptionsSetValue(NULL, "-dream_rbj_sub_pc_hypre_boomeramg_eu_level", "1");
 
     // Default sub-solvers (the sub-KSPs exist after KSPSetUp); the
     // -dream_rbj_sub_* options override them.

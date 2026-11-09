@@ -10,7 +10,8 @@ namespace DREAM::FVM {
      * Matrix inverter using FGMRES preconditioned by block Jacobi over the
      * RADIUS: one block per group of -dream_rbj_radii_per_block radial cells
      * (default 1), holding the f_hot AND the f_re unknowns of those radii.
-     * Each block is solved with an inner GMRES + hypre/BoomerAMG; the radial
+     * Each block is solved with an inner GMRES + hypre/BoomerAMG (with
+     * hypre's Euclid ILU(1) as the multigrid smoother by default); the radial
      * coupling between blocks is left to the outer FGMRES. This is variant
      * 2b of iface/TestKineticHypreRadius.cpp, wired into DREAM.
      *

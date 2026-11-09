@@ -6,6 +6,8 @@
 # Snapshots written to snapshots/<name>/:
 #   injection_t0   first time step of output_injection_start_M4.h5
 #   injection_tf   last time step of output_injection_start_M4.h5
+#   CQ_t29ms       time index 294 (t = 29.4 ms) of output_CQ_M4.h5
+#   CQ_t49ms       time index 490 (t = 49.0 ms) of output_CQ_M4.h5
 #   CQ_tf          last time step of output_CQ_M4.h5
 #
 # Each snapshot folder contains:
@@ -47,6 +49,8 @@ SNAP_DIR = os.path.join(DATASET_DIR, 'snapshots')
 SNAPSHOTS = {
     'injection_t0': (INJECTION, 0),
     'injection_tf': (INJECTION, -1),
+    'CQ_t29ms':     (CQ, 294),   # avalanche growth: n_re ~ 1e14, E ~ 31 V/m
+    'CQ_t49ms':     (CQ, 490),   # avalanche saturating: n_re ~ 5e16, E ~ 18 V/m
     'CQ_tf':        (CQ, -1),
 }
 

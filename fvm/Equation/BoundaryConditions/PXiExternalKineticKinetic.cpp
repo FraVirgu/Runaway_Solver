@@ -15,6 +15,7 @@
  */
 
 #include "FVM/BlockMatrix.hpp"
+#include "FVM/FVMException.hpp"
 #include "FVM/Equation/BoundaryConditions/PXiExternalKineticKinetic.hpp"
 
 
@@ -155,6 +156,35 @@ void PXiExternalKineticKinetic::AddToMatrixElements(
 
     // Restore matrix offset
     mat->SetOffset(rowOffset, colOffset);
+}
+
+/**
+ * Add flux to function vector, using the current values of f_low and f_upp.
+ *
+ * The coefficients are the ones on the upper p boundary of the lower grid
+ * collected on every rank by the advection-diffusion term (see
+ * AdvectionDiffusionTerm::GatherUpperBoundaryCoefficients()): the full
+ * coefficient arrays only hold the radii owned by this rank, so they
+ * cannot be used here when running on several ranks.
+ *
+ * vec: Vector to add the flux to.
+ * f:   Not used (the term reads f_low and f_upp itself, see Rebuild()).
+ */
+void PXiExternalKineticKinetic::AddToVectorElements(
+    real_t *vec, const real_t*
+) {
+    if (this->fLow == nullptr || this->fUpp == nullptr)
+        throw FVMException(
+            "PXiExternalKineticKinetic: the term must be rebuilt before it is evaluated."
+        );
+
+    const real_t *fLow = this->fLow;
+    const real_t *fUpp = this->fUpp;
+
+    __SetElements(
+        [vec,fLow](const len_t I, const len_t J, const real_t V) { vec[I] += V*fLow[J]; },
+        [vec,fUpp](const len_t I, const len_t J, const real_t V) { vec[I] += V*fUpp[J]; }
+    );
 }
 
 /**
