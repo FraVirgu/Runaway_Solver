@@ -11,7 +11,7 @@
 #   E_field(r), T_cold(r), n_cold(r), n_i(Z0, r)    prescribed, from state.h5
 #
 # Injection snapshots take dt in NT_INJ (default 1) step; current-quench
-# snapshots (CQ_*) in NT_CQ (default 20) steps of dt/NT_CQ.
+# snapshots (CQ_*) in NT_CQ (default 1) steps of dt/NT_CQ.
 #
 # The numerics are those of diff_grid_paper_kinetic_radial.py: two kinetic
 # grids of different resolution, Rechester-Rosenbluth transport plus radial
@@ -101,9 +101,10 @@ RE_PT  = float(os.environ.get('RE_PT', 10.0))
 RE_XIW = float(os.environ.get('RE_XIW', 0.05))
 
 # Number of time steps per run. The current-quench snapshots (CQ_*) use the
-# source simulation's dt (~1e-4 s), too long for a single kinetic step:
-# that interval is split into NT_CQ steps of dt/NT_CQ. Injection: NT_INJ.
-NT_CQ  = int(os.environ.get('NT_CQ', 5))
+# source simulation's dt (~1e-4 s), split into NT_CQ steps of dt/NT_CQ;
+# injection: NT_INJ. Default 1 for both: one linear system per snapshot
+# (memory/speed-up tests). For an accurate CQ evolution raise NT_CQ (e.g. 20).
+NT_CQ  = int(os.environ.get('NT_CQ', 1))
 NT_INJ = int(os.environ.get('NT_INJ', 1))
 
 # FULL=1: settings for the full DREAM system (fluid unknowns evolved too,
