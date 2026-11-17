@@ -2,3 +2,5 @@ DATASET/snapshots
 DATASET/output_CQ_M4.h5
 DATASET/output_injection_start_M4.h5
 OUT_DATA/
+# Kinetic-only reference runs (settings, first kinetic version f1634a3, outputs)
+KINETIC_REF/

@@ -309,24 +309,16 @@ static void SaveMemory(const string &prefix, EquationSystem *eqsys) {
     vector<real_t> all(rank == 0 ? NV*size : 0);
     MPI_Gather(mine, NV, MPIU_REAL, all.data(), NV, MPIU_REAL, 0, PETSC_COMM_WORLD);
 
-    // Memory at each recorded stage of the construction (the same stages
-    // on every rank): [stage][rank], current and peak
-    const vector<ProcessMemoryRecord> &stages = ProcessMemoryLog();
-    int nStages = (int)stages.size(), nStagesMin;
-    MPI_Allreduce(&nStages, &nStagesMin, 1, MPI_INT, MPI_MIN, PETSC_COMM_WORLD);
-    vector<real_t> stageMine(2*nStagesMin);
-    for (int k = 0; k < nStagesMin; k++) {
-        stageMine[2*k]   = stages[k].current;
-        stageMine[2*k+1] = stages[k].peak;
-    }
-    vector<real_t> stageAll(rank == 0 ? 2*nStagesMin*size : 0);
-    MPI_Gather(stageMine.data(), 2*nStagesMin, MPIU_REAL, stageAll.data(), 2*nStagesMin, MPIU_REAL, 0, PETSC_COMM_WORLD);
+    // Memory at each recorded stage of the construction: collective, so
+    // every rank calls it; only rank 0 opens the file
+    FILE *files[] = {stdout, rank == 0 ? fopen((prefix + "memory.txt").c_str(), "w") : nullptr};
 
-    if (rank != 0)
+    if (rank != 0) {
+        PrintProcessMemoryLog({});
         return;
+    }
 
     const real_t MB = 1024.0*1024.0;
-    FILE *files[] = {stdout, fopen((prefix + "memory.txt").c_str(), "w")};
     for (FILE *f : files) {
         if (f == nullptr)
             continue;
@@ -364,25 +356,11 @@ static void SaveMemory(const string &prefix, EquationSystem *eqsys) {
             matSum += v[9];
         }
         fprintf(f, "%6s  %14s  %14s  %14.3f\n", "sum", "", "", matSum/MB);
-
-        // Stages
-        fprintf(f, "\nResident set size at the end of each stage of the construction [MB]\n");
-        fprintf(f, "  min/max: over the ranks; added: largest increase on a rank since the previous stage\n");
-        fprintf(f, "%-48s  %10s  %10s  %10s  %10s\n", "stage", "RSS min", "RSS max", "added", "peak max");
-        for (int k = 0; k < nStagesMin; k++) {
-            real_t lo = 0, hi = 0, added = 0, pk = 0;
-            for (int r = 0; r < size; r++) {
-                const real_t c = stageAll[2*nStagesMin*r + 2*k];
-                const real_t prev = (k > 0 ? stageAll[2*nStagesMin*r + 2*(k-1)] : 0);
-                lo = (r == 0 ? c : min(lo, c));
-                hi = max(hi, c);
-                added = max(added, c - prev);
-                pk = max(pk, stageAll[2*nStagesMin*r + 2*k+1]);
-            }
-            fprintf(f, "%-48s  %10.1f  %10.1f  %10.1f  %10.1f\n",
-                stages[k].stage.c_str(), lo/MB, hi/MB, added/MB, pk/MB);
-        }
     }
+
+    // Stages (same table as dreami -dream_log_memory)
+    PrintProcessMemoryLog({files[0], files[1]});
+
     if (files[1] != nullptr) {
         fclose(files[1]);
         printf("Memory saved as %smemory.txt\n", prefix.c_str());

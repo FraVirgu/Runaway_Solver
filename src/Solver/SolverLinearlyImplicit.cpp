@@ -34,6 +34,7 @@
 #include "DREAM/IO.hpp"
 #include "DREAM/OutputGeneratorSFile.hpp"
 #include "DREAM/Settings/OptionConstants.hpp"
+#include "DREAM/Settings/ProcessMemory.hpp"
 #include "DREAM/Solver/SolverLinearlyImplicit.hpp"
 #include <chrono>
 
@@ -311,6 +312,10 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         this->timeKeeper->StartTimer(timerRebuild);
         RebuildTermsTransientAdvectionDiffusion(t, dt);
         this->timeKeeper->StopTimer(timerRebuild);
+        // Memory of the first time step, stage by stage (printed by dreami
+        // with -dream_log_memory, see DREAM/Settings/ProcessMemory.hpp)
+        if (this->nTimeStep == 1 && iter == 1)
+            RecordProcessMemory("solver: step 1 rebuild");
 
         real_t *S;
         VecGetArray(petsc_S, &S);
@@ -318,6 +323,8 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         this->timeKeeper->StartTimer(timerMatrix);
         BuildMatrixTransientAdvectionDiffusion(t, dt, matrix, S);
         this->timeKeeper->StopTimer(timerMatrix);
+        if (this->nTimeStep == 1 && iter == 1)
+            RecordProcessMemory("solver: step 1 matrix");
 
         // The file name carries the number of MPI ranks of this run
         PetscMPIInt nRanks;
@@ -368,6 +375,9 @@ void SolverLinearlyImplicit::Solve(const real_t t, const real_t dt)
         this->timeKeeper->StartTimer(timerInvert);
         inverter->Invert(matrix, &petsc_S, &petsc_S);
         this->timeKeeper->StopTimer(timerInvert);
+        // Includes the setup of the linear solver/preconditioner (KSP, AMG)
+        if (this->nTimeStep == 1 && iter == 1)
+            RecordProcessMemory("solver: step 1 solve (incl. PC setup)");
 
         if (this->nTimeStep == 1)
         {

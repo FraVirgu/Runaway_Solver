@@ -24,6 +24,7 @@
 #include "DREAM/Init.h"
 #include "DREAM/IO.hpp"
 #include "DREAM/QuitException.hpp"
+#include "DREAM/Settings/ProcessMemory.hpp"
 #include "DREAM/Settings/Settings.hpp"
 #include "DREAM/Settings/SFile.hpp"
 #include "DREAM/Settings/SimulationGenerator.hpp"
@@ -237,6 +238,9 @@ int main(int argc, char *argv[])
     // is distributed across the ranks (see Matrix::Construct()).
     {
         dream_initialize();
+        // Fixed part of the memory (MPI, PETSc, libraries): the baseline of
+        // the -dream_log_memory table
+        DREAM::RecordProcessMemory("dreami: MPI_Init + dream_initialize");
         // Allow the user to press Ctrl+\ or Ctrl+Y to quit the simulation early
         PetscPopSignalHandler();
         std::signal(SIGQUIT, sig_quit);
@@ -270,6 +274,7 @@ int main(int argc, char *argv[])
             DREAM::Settings *settings = DREAM::SimulationGenerator::CreateSettings();
             printf("ciao");
             DREAM::SettingsSFile::LoadSettings(settings, a->input_filename);
+            DREAM::RecordProcessMemory("dreami: settings loaded");
             printf("ciao");
             sim = DREAM::SimulationGenerator::ProcessSettings(settings);
             printf("ciao");
@@ -280,9 +285,19 @@ int main(int argc, char *argv[])
                 display_adas(sim);
 
             sim->Run();
+            DREAM::RecordProcessMemory("dreami: run (all time steps)");
             // Only one rank writes the output file
             if (my_rank == 0)
                 sim->Save();
+            DREAM::RecordProcessMemory("dreami: output saved");
+
+            // Memory per stage (construction, first time step, whole run),
+            // over the ranks: -dream_log_memory. Collective, so it is only
+            // done when every rank got here.
+            PetscBool logMemory = PETSC_FALSE;
+            PetscOptionsHasName(NULL, NULL, "-dream_log_memory", &logMemory);
+            if (logMemory)
+                DREAM::PrintProcessMemoryLog({stdout});
         }
         catch (DREAM::QuitException &ex)
         {

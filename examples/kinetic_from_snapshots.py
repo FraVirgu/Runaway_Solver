@@ -54,6 +54,7 @@ sys.path.append(DATASET_DIR)
 
 from DREAM.DREAMSettings import DREAMSettings
 import DREAM.Settings.Equations.DistributionFunction as DistFunc
+import DREAM.Settings.Equations.HotElectronDistribution as HotElectrons
 import DREAM.Settings.Equations.IonSpecies as Ions
 import DREAM.Settings.Equations.RunawayElectrons as Runaways
 import DREAM.Settings.Solver as Solver
@@ -102,14 +103,32 @@ RE_XIW = float(os.environ.get('RE_XIW', 0.05))
 # Number of time steps per run. The current-quench snapshots (CQ_*) use the
 # source simulation's dt (~1e-4 s), too long for a single kinetic step:
 # that interval is split into NT_CQ steps of dt/NT_CQ. Injection: NT_INJ.
-NT_CQ  = int(os.environ.get('NT_CQ', 20))
+NT_CQ  = int(os.environ.get('NT_CQ', 5))
 NT_INJ = int(os.environ.get('NT_INJ', 1))
+
+# FULL=1: settings for the full DREAM system (fluid unknowns evolved too,
+# no -dream_kinetic_only), for stock DREAM: n_re starts from the snapshot
+# n_re and the linear solver is MUMPS (RADIAL_BJ only exists in the
+# kinetic-only code). Files are tagged full_<snapshot>_L<level>.
+FULL = os.environ.get('FULL', '0') == '1'
+
+# NONLINEAR=1 (with FULL=1): Newton solver (Solver.NONLINEAR, linear solver
+# MUMPS) instead of LINEAR_IMPLICIT. Files are tagged fullnl_<snapshot>_L<level>.
+NONLINEAR = os.environ.get('NONLINEAR', '0') == '1'
+
+# NO_SP=1 (with FULL=1): no f_hot particle source (PARTICLE_SOURCE_ZERO), so
+# S_particle does not act on f_hot, as in the kinetic-only code. Files are
+# tagged full_nosp_<snapshot>_L<level> (fullnl_nosp_ with NONLINEAR=1).
+NO_SP = os.environ.get('NO_SP', '0') == '1'
+if NONLINEAR and not FULL:
+    sys.exit('NONLINEAR=1 needs FULL=1 (the kinetic-only code supports LINEAR_IMPLICIT only).')
 
 def num_timesteps(name):
     return NT_CQ if name.startswith('CQ') else NT_INJ
 
-p_re_init  = np.linspace(P_RE, P_MAX, 1001)
-xi_re_init = np.linspace(-1.0, 1.0,    801)
+
+p_re_init  = np.linspace(P_RE, P_MAX, 500)
+xi_re_init = np.linspace(-1.0, 1.0,    401)
 
 
 def addRadialAdvection(tr, ar, r):
@@ -254,6 +273,14 @@ def make_settings(name, s, dt):
     # -dream_rbj_radii_per_block sets the radii per block (default 1)
     ds.solver.setLinearSolver(Solver.LINEAR_SOLVER_RADIAL_BJ)
 
+    if FULL:
+        ds.eqsys.n_re.setInitialProfile(density=s['n_re'], radius=r)
+        ds.solver.setLinearSolver(Solver.LINEAR_SOLVER_MUMPS)
+        if NONLINEAR:
+            ds.solver.setType(Solver.NONLINEAR)
+        if NO_SP:
+            ds.eqsys.f_hot.setParticleSource(particleSource=HotElectrons.PARTICLE_SOURCE_ZERO)
+
     ds.other.include('fluid', 'nu_s', 'nu_D')
 
     ds.timestep.setTmax(dt)
@@ -285,7 +312,7 @@ for folder in folders:
     dt = snapshot_dt(name)
 
     ds = make_settings(name, s, dt)
-    TAG = f'kinetic_{name}_L{LEVEL}'
+    TAG = f'{("fullnl" if NONLINEAR else "full") + ("_nosp" if NO_SP else "") if FULL else "kinetic"}_{name}_L{LEVEL}'
     ds.output.setFilename(f'output_{TAG}.h5')
     settings_file = os.path.join(OUT_DIR, f'dream_settings_{TAG}.h5')
     ds.save(settings_file)
