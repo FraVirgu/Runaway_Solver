@@ -214,7 +214,13 @@ def collect(outdir):
         else:
             path = os.path.join(d, "dreami.log")
         entry = data.setdefault(snap, {}).setdefault(run, {}).setdefault(
-            n, {"stages": [], "components": {}, "timings": [], "path": path})
+            n, {"stages": [], "components": {}, "timings": [], "path": path, "nodes": 1})
+        nodes_file = os.path.join(d, "nodes.txt")
+        if first and os.path.isfile(nodes_file):
+            try:
+                entry["nodes"] = int(open(nodes_file).read().strip())
+            except ValueError:
+                pass
         if not os.path.isfile(path):
             continue
         stages = parse_stages(path)
@@ -240,12 +246,12 @@ def print_speedup(snap, runs):
     n0 = ns[0]
     print(f"\n  4. time [s] (fastest of the repeats); speed-up and efficiency of the time loop vs n = {n0}")
     cols = ["wall", "loop", "invert", "rebuild", "matrix", "solve1", "solve2"]
-    print(f"  {'n':>5}  {'runs':>4}  " + "  ".join(f"{c:>9}" for c in cols) + f"  {'speed-up':>8}  {'eff.':>6}")
+    print(f"  {'n':>5}  {'nodes':>5}  {'runs':>4}  " + "  ".join(f"{c:>9}" for c in cols) + f"  {'speed-up':>8}  {'eff.':>6}")
     for n in ns:
         t, k = best[n]
         sp = best[n0][0]["loop"] / t["loop"] if t["loop"] else float("nan")
         e = sp * n0 / n
-        print(f"  {n:5d}  {k:4d}  " + "  ".join(
+        print(f"  {n:5d}  {runs[n]['nodes']:5d}  {k:4d}  " + "  ".join(
             f"{t[c]:9.3f}" if t[c] is not None else f"{'-':>9}" for c in cols) + f"  {sp:8.2f}  {e:6.2f}")
     print("  (loop: time stepping; solve1: first solve incl. PC setup; rebuild/matrix: from the % breakdown)")
 

@@ -67,6 +67,21 @@
 #
 # "nr" can be mixed with numbers (NPROCS="1 nr"): the same n is run once.
 #
+# Several nodes: submit with sbatch --nodes=N. Every n runs on nn <= N nodes
+# with ppn = n/nn ranks per node, spread over all the cores of a node:
+#   RANKS_PER_NODE unset   nn = the fewest nodes with n/nn <= 256 and nn | n
+#                          (n <= 256 stays on 1 node, as before)
+#   RANKS_PER_NODE=p       nn = n/p (n <= p: 1 node): a fixed density, so
+#                          larger n means more nodes, not fuller nodes
+# n that do not fit are skipped. The node count of every run is in its
+# nodes.txt and in the summary. Nr = 44 on up to 4 nodes (704 ranks = each
+# radius split over 16 ranks):
+#
+#   $ SNAPSHOTS="CQ_tf_nr44" NPROCS="44 88 176 352 704" RANKS_PER_NODE=176 REPEATS=3 \
+#         sbatch --nodes=4 run_memory_snapshots.sh            # 1,1,1,2,4 nodes
+#   $ SNAPSHOTS="CQ_tf_nr44" NPROCS="44 88 176" RANKS_PER_NODE=44 REPEATS=3 \
+#         sbatch --nodes=4 run_memory_snapshots.sh            # 1,2,4 nodes x 44 ranks
+#
 # The radial block Jacobi needs n <= Nr or n a multiple of Nr (each radius
 # split over n/Nr ranks): other n > Nr are skipped. n < Nr that do not divide
 # Nr run, with unequal radii per rank (the max-per-rank figures then show the
@@ -111,6 +126,8 @@ DATADIR=${DATADIR:-$DREAM_ROOT/build/iface}
 OUTDIR=${OUTDIR:-$DATADIR/memory_${PREFIX}_L${LEVEL}_${SLURM_JOB_ID:-local}}
 
 CORES_PER_NODE=256                    # 2 sockets x 128 cores
+JOB_NODES=${SLURM_JOB_NUM_NODES:-1}   # sbatch --nodes=N
+RANKS_PER_NODE=${RANKS_PER_NODE:-}    # empty: as few nodes as possible (see "Several nodes")
 
 for run in $RUNS; do
     case $run in
@@ -148,6 +165,7 @@ done
 mkdir -p $OUTDIR
 echo "Snapshots: $SNAPSHOTS"
 echo "LEVEL = $LEVEL, NPROCS = '$NPROCS', RUNS = '$RUNS', REPEATS (dreami) = $REPEATS"
+echo "Nodes in the job: $JOB_NODES, RANKS_PER_NODE = ${RANKS_PER_NODE:-auto}"
 echo "PETSC_OPTIONS = '$PETSC_OPTIONS'"
 echo "Outputs in $OUTDIR"
 
@@ -175,8 +193,26 @@ for snap in $SNAPSHOTS; do
     done
 
     for n in $NPROCS_SNAP; do
-        if (( n > CORES_PER_NODE )); then
-            echo "skipping n = $n: more than the $CORES_PER_NODE cores of the node"
+        # nodes nn and ranks per node ppn of this run (see "Several nodes" above)
+        nn=""
+        if [ -n "$RANKS_PER_NODE" ]; then
+            if (( n <= RANKS_PER_NODE )); then
+                nn=1
+            elif (( n % RANKS_PER_NODE == 0 )); then
+                nn=$((n / RANKS_PER_NODE))
+            fi
+        else
+            for ((k = 1; k <= JOB_NODES; k++)); do
+                if (( n % k == 0 && n / k <= CORES_PER_NODE )); then nn=$k; break; fi
+            done
+        fi
+        if [ -z "$nn" ] || (( nn > JOB_NODES )); then
+            echo "skipping n = $n: does not fit evenly on the $JOB_NODES node(s) of the job (RANKS_PER_NODE = ${RANKS_PER_NODE:-auto})"
+            continue
+        fi
+        ppn=$((n / nn))
+        if (( ppn > CORES_PER_NODE )); then
+            echo "skipping n = $n: $ppn ranks per node > $CORES_PER_NODE cores"
             continue
         fi
         if [ -n "$NR" ] && (( n > NR && n % NR != 0 )); then
@@ -187,7 +223,9 @@ for snap in $SNAPSHOTS; do
             echo "warning: n = $n does not divide Nr = $NR, the ranks get unequal numbers of radii"
         fi
         # spread the ranks over the whole node (both sockets, memory channels)
-        CPUS_PER_TASK=$((CORES_PER_NODE / n))
+        CPUS_PER_TASK=$((CORES_PER_NODE / ppn))
+        SRUN_LAYOUT="--nodes=$nn --ntasks=$n --ntasks-per-node=$ppn --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores"
+        echo "--- n = $n: $nn node(s) x $ppn ranks, $CPUS_PER_TASK cores per rank"
 
         for run in $RUNS; do
           nrep=$([ $run == dreami ] && echo $REPEATS || echo 1)
@@ -195,10 +233,11 @@ for snap in $SNAPSHOTS; do
             dir=$OUTDIR/$snap/${run}_np${n}$([ $r -gt 1 ] && echo _r$r)
             mkdir -p $dir
             cd $dir
+            echo $nn > nodes.txt
 
             t0=$(date +%s.%N)
             if [ $run == test ]; then
-                srun --nodes=1 --ntasks=$n --ntasks-per-node=$n --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores \
+                srun $SRUN_LAYOUT \
                      $DREAM_ROOT/build/iface/testcollisionquantity $SETTINGS -cq_dir $dir > test.log 2>&1
                 code=$?
                 ok=$([ -f cq_np${n}_memory.txt ] && grep -q "End of resident set size table" cq_np${n}_memory.txt && echo 1)
@@ -209,7 +248,7 @@ for snap in $SNAPSHOTS; do
                 # command line (getopt) only takes -a -h -l -s and exits on
                 # anything else
                 PETSC_OPTIONS="$PETSC_OPTIONS -dream_log_memory" \
-                srun --nodes=1 --ntasks=$n --ntasks-per-node=$n --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores \
+                srun $SRUN_LAYOUT \
                      $DREAM_ROOT/build/iface/dreami $SETTINGS > dreami.log 2>&1
                 code=$?
                 # dreami returns 0 even when the run failed: the table is
