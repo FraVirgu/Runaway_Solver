@@ -30,7 +30,7 @@
 #           output.setTiming(stdout=True), as kinetic_from_snapshots.py
 #           does) -> dreami.log, wall time of srun -> wall_s.txt
 #
-# on $DATADIR/dream_settings_kinetic_<snapshot>_L<LEVEL>.h5
+# on $DATADIR/dream_settings_${PREFIX}_<snapshot>_L<LEVEL>.h5
 # (examples/kinetic_from_snapshots.py). Every run has its own folder
 #
 #   $OUTDIR/<snapshot>/<test|dreami>_np<n>/          (first run)
@@ -49,6 +49,23 @@
 #   $ NPROCS="1 11 22" RUNS=test sbatch run_memory_snapshots.sh
 #   $ RUNS=dreami REPEATS=3 sbatch run_memory_snapshots.sh    # speed-up only, 3 runs each
 #   $ LEVEL=4 sbatch run_memory_snapshots.sh
+#   $ PREFIX=toroidal SNAPSHOTS="CQ_tf_nr44" NPROCS="1 11 22 44" sbatch run_memory_snapshots.sh
+#                                                             # toroidal geometry, 44 radii
+#
+# Weak scaling (one radius per rank): NPROCS=nr runs every snapshot with n =
+# its Nr. The settings come from kinetic_from_snapshots.py with NR set
+# (snapshot names <name>_nr<Nr>); summarize_memory.py groups the snapshots
+# with the same <name> and prints the weak-scaling table:
+#
+#   $ for nr in 11 22 44 88 176; do SNAPSHOT=CQ_tf NR=$nr examples/kinetic_from_snapshots.py; done
+#   $ SNAPSHOTS="CQ_tf_nr11 CQ_tf_nr22 CQ_tf_nr44 CQ_tf_nr88 CQ_tf_nr176" NPROCS=nr \
+#         RUNS=dreami REPEATS=3 sbatch run_memory_snapshots.sh
+#
+# Strong scaling at Nr = 44 (divisors and multiples of 44):
+#
+#   $ SNAPSHOTS="CQ_tf_nr44" NPROCS="1 2 4 11 22 44 88 176" REPEATS=3 sbatch run_memory_snapshots.sh
+#
+# "nr" can be mixed with numbers (NPROCS="1 nr"): the same n is run once.
 #
 # The radial block Jacobi needs n <= Nr or n a multiple of Nr (each radius
 # split over n/Nr ranks): other n > Nr are skipped. n < Nr that do not divide
@@ -81,13 +98,17 @@ export MKL_DYNAMIC=FALSE
 export PETSC_OPTIONS=${PETSC_OPTIONS:-"-dream_kinetic_only -dream_scale diag"}
 
 LEVEL=${LEVEL:-2}
+# settings files dream_settings_<PREFIX>_<snapshot>_L<LEVEL>.h5:
+#   kinetic   examples/kinetic_from_snapshots.py (cylindrical; <snapshot> = <name>_nr<NR> with NR set)
+#   toroidal  examples/kinetic_snapshot_toroidal.py (<snapshot> = <name>_nr<NR>)
+PREFIX=${PREFIX:-kinetic}
 NPROCS=${NPROCS:-"1 11 22 44 88 176"}
 RUNS=${RUNS:-"test dreami"}           # which executables to run
 REPEATS=${REPEATS:-1}                 # runs of dreami per (snapshot, n), for the timings
 
 DREAM_ROOT=${DREAM_ROOT:-$HOME/DREAM}
 DATADIR=${DATADIR:-$DREAM_ROOT/build/iface}
-OUTDIR=${OUTDIR:-$DATADIR/memory_L${LEVEL}_${SLURM_JOB_ID:-local}}
+OUTDIR=${OUTDIR:-$DATADIR/memory_${PREFIX}_L${LEVEL}_${SLURM_JOB_ID:-local}}
 
 CORES_PER_NODE=256                    # 2 sockets x 128 cores
 
@@ -105,21 +126,21 @@ done
 
 # all snapshots with a settings file at this LEVEL, unless SNAPSHOTS is given
 if [ -z "$SNAPSHOTS" ]; then
-    for f in $DATADIR/dream_settings_kinetic_*_L${LEVEL}.h5; do
+    for f in $DATADIR/dream_settings_${PREFIX}_*_L${LEVEL}.h5; do
         [ -f "$f" ] || continue
         s=$(basename $f .h5)
-        s=${s#dream_settings_kinetic_}
+        s=${s#dream_settings_${PREFIX}_}
         SNAPSHOTS="$SNAPSHOTS ${s%_L${LEVEL}}"
     done
 fi
 if [ -z "$SNAPSHOTS" ]; then
-    echo "No dream_settings_kinetic_*_L${LEVEL}.h5 in $DATADIR: run examples/kinetic_from_snapshots.py first." >&2
+    echo "No dream_settings_${PREFIX}_*_L${LEVEL}.h5 in $DATADIR: run examples/kinetic_from_snapshots.py (PREFIX=kinetic) or kinetic_snapshot_toroidal.py (PREFIX=toroidal) first." >&2
     exit 1
 fi
 # check every file first: do not find out about a missing one hours into the job
 for snap in $SNAPSHOTS; do
-    if [ ! -f $DATADIR/dream_settings_kinetic_${snap}_L${LEVEL}.h5 ]; then
-        echo "'dream_settings_kinetic_${snap}_L${LEVEL}.h5' not found (in $DATADIR)." >&2
+    if [ ! -f $DATADIR/dream_settings_${PREFIX}_${snap}_L${LEVEL}.h5 ]; then
+        echo "'dream_settings_${PREFIX}_${snap}_L${LEVEL}.h5' not found (in $DATADIR)." >&2
         exit 1
     fi
 done
@@ -131,7 +152,7 @@ echo "PETSC_OPTIONS = '$PETSC_OPTIONS'"
 echo "Outputs in $OUTDIR"
 
 for snap in $SNAPSHOTS; do
-    SETTINGS=$DATADIR/dream_settings_kinetic_${snap}_L${LEVEL}.h5
+    SETTINGS=$DATADIR/dream_settings_${PREFIX}_${snap}_L${LEVEL}.h5
     # Nr = number of radial cells (r_f holds the Nr+1 cell faces); h5ls
     # (hdf5 module) prints "r_f  Dataset {12}" or "{12/12}"; h5py as fallback
     NF=$(h5ls $SETTINGS/radialgrid/r_f 2>/dev/null | sed -nE 's/.*Dataset \{([0-9]+).*/\1/p')
@@ -140,7 +161,20 @@ for snap in $SNAPSHOTS; do
     echo
     echo "##### $snap: Nr = ${NR:-unknown} #####"
 
+    # "nr" in NPROCS stands for this snapshot's Nr (weak scaling)
+    NPROCS_SNAP=""
     for n in $NPROCS; do
+        if [ "$n" == nr ]; then
+            if [ -z "$NR" ]; then
+                echo "skipping n = nr: Nr of $snap unknown"
+                continue
+            fi
+            n=$NR
+        fi
+        [[ " $NPROCS_SNAP " == *" $n "* ]] || NPROCS_SNAP="$NPROCS_SNAP $n"
+    done
+
+    for n in $NPROCS_SNAP; do
         if (( n > CORES_PER_NODE )); then
             echo "skipping n = $n: more than the $CORES_PER_NODE cores of the node"
             continue

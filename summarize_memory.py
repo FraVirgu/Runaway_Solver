@@ -37,7 +37,11 @@ For every snapshot and executable it prints
      the preconditioner setup) and second solve, and the speed-up and
      parallel efficiency of the time loop against the smallest n.
 
-and writes every stage row to <OUTDIR>/memory_stages.csv. With --plot it
+Snapshots named <name>_nr<Nr> (kinetic_from_snapshots.py with NR) with a
+dreami run at n = Nr are also grouped by <name> into a weak-scaling table
+(time and efficiency t(smallest Nr) / t, one radius per rank).
+
+It writes every stage row to <OUTDIR>/memory_stages.csv. With --plot it
 also saves a figure of peak RSS per rank and of the dreami speed-up
 against n (needs matplotlib).
 
@@ -312,6 +316,83 @@ def print_scaling(snap, run, runs):
                 f"{s:15.2f}" if s is not None else f"{'-':>15}" for s in serials))
 
 
+def best_timing(entry):
+    ts = [t for t in entry["timings"] if t["loop"] is not None]
+    return (min(ts, key=lambda t: t["loop"]), len(ts)) if ts else (None, 0)
+
+
+def weak_series(data):
+    """
+    Weak scaling: snapshots <name>_nr<Nr> grouped by <name>, each taken at
+    n = Nr (one radius per rank). {name: [(nr, n, timing, n_repeats,
+    peak, base)]} sorted by Nr, only groups with at least two members.
+    """
+    groups = {}
+    for snap in data:
+        m = re.fullmatch(r"(.+)_nr(\d+)", snap)
+        if not m:
+            continue
+        nr = int(m.group(2))
+        e = data[snap].get("dreami", {}).get(nr)
+        if e is None:
+            continue
+        t, k = best_timing(e)
+        if t is None:
+            continue
+        st = e["stages"]
+        groups.setdefault(m.group(1), []).append(
+            (nr, nr, t, k, st[-1]["peak_max"] if st else None, st[0]["rss_max"] if st else None))
+    return {g: sorted(v, key=lambda x: x[0]) for g, v in groups.items() if len(v) > 1}
+
+
+def print_weak(series):
+    for name, rows in sorted(series.items()):
+        t0 = rows[0][2]
+        print(f"\n=== weak scaling {name}: n = Nr (one radius per rank), dreami, fastest repeat ===")
+        print("  efficiency = time at the smallest Nr / time (1 = ideal: constant time)")
+        cols = ["wall", "loop", "invert", "rebuild", "matrix", "solve1", "solve2"]
+        print(f"  {'Nr':>5}  {'n':>5}  {'runs':>4}  " + "  ".join(f"{c:>9}" for c in cols)
+              + f"  {'eff.loop':>8}  {'eff.inv':>7}  {'peak MB':>9}  {'pk-base':>8}")
+        for nr, n, t, k, peak, base in rows:
+            el = t0["loop"] / t["loop"] if t["loop"] else float("nan")
+            ei = t0["invert"] / t["invert"] if t0["invert"] and t["invert"] else float("nan")
+            pk = f"{peak:9.1f}" if peak is not None else f"{'-':>9}"
+            pb = f"{peak - base:8.1f}" if peak is not None else f"{'-':>8}"
+            print(f"  {nr:5d}  {n:5d}  {k:4d}  " + "  ".join(
+                f"{t[c]:9.3f}" if t[c] is not None else f"{'-':>9}" for c in cols)
+                + f"  {el:8.2f}  {ei:7.2f}  {pk}  {pb}")
+
+
+def plot_weak(path, series):
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print(f"\nmatplotlib not available: no plot ({path})")
+        return
+    fig, axes = plt.subplots(1, 2, figsize=(9, 3.8))
+    for name, rows in sorted(series.items()):
+        ns = [r[1] for r in rows]
+        for key, style in (("loop", "o-"), ("invert", "s--")):
+            if all(r[2][key] for r in rows):
+                t0 = rows[0][2][key]
+                axes[0].plot(ns, [r[2][key] for r in rows], style, label=f"{name}: {key}")
+                axes[1].plot(ns, [t0 / r[2][key] for r in rows], style, label=f"{name}: {key}")
+    axes[1].axhline(1.0, color="gray", ls=":", label="ideal")
+    axes[0].set_ylabel("time [s]")
+    axes[1].set_ylabel("weak efficiency")
+    axes[1].set_ylim(bottom=0)
+    for ax in axes:
+        ax.set_xscale("log")
+        ax.set_xlabel("MPI ranks = Nr")
+        ax.grid(True, which="both", alpha=0.3)
+    axes[1].legend(fontsize=7)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    print(f"\nWeak-scaling plot saved as {path}")
+
+
 def write_csv(path, data):
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
@@ -403,12 +484,18 @@ def main():
                 if run == "dreami":
                     print_speedup(snap, data[snap][run])
 
+    series = weak_series(data)
+    print_weak(series)
+
     csv_path = os.path.join(args.outdir, "memory_stages.csv")
     write_csv(csv_path, data)
     print(f"\nStage rows saved as {csv_path}")
 
     if args.plot:
         plot(args.plot, data)
+        if series:
+            root, ext = os.path.splitext(args.plot)
+            plot_weak(f"{root}_weak{ext or '.png'}", series)
     return 0
 
 

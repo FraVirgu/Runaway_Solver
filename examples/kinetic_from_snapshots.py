@@ -27,11 +27,19 @@
 # Geometry: cylindrical with B0 = B_min on axis and the snapshot radial grid.
 # The source runs use the numerical ITER equilibrium, which is not available.
 #
+# Radial resolution: NR (default: unset, the snapshot grid, 11 cells) gives
+# NR uniform cells on [0, a] (a = the snapshot's last face; the snapshot grid
+# is itself uniform, so NR=11 reproduces it). The profiles (E, T_cold,
+# n_cold, n_i, n_re) are interpolated linearly in r, constant beyond the
+# outermost centres. Files are then tagged kinetic_<snapshot>_nr<NR>_L<level>
+# (for the weak scaling of run_memory_snapshots.sh, NPROCS=nr).
+#
 # Run as
 #
 #   $ ./kinetic_from_snapshots.py                       # all snapshots
 #   $ SNAPSHOT=CQ_tf LEVEL=1 ./kinetic_from_snapshots.py
 #   $ NT_CQ=40 ./kinetic_from_snapshots.py              # CQ: 40 steps
+#   $ for nr in 11 22 44 88 176; do SNAPSHOT=CQ_tf NR=$nr ./kinetic_from_snapshots.py; done
 #   $ cd $DREAM_ROOT/build/iface && ./dreami dream_settings_kinetic_CQ_tf_L2.h5
 #
 # ###################################################################
@@ -124,6 +132,12 @@ NO_SP = os.environ.get('NO_SP', '0') == '1'
 if NONLINEAR and not FULL:
     sys.exit('NONLINEAR=1 needs FULL=1 (the kinetic-only code supports LINEAR_IMPLICIT only).')
 
+# Radial cells; None: the snapshot grid
+NR = int(os.environ['NR']) if os.environ.get('NR') else None
+if NR is not None and FULL:
+    sys.exit('NR is for the kinetic-only runs (FULL=0).')
+
+
 def num_timesteps(name):
     return NT_CQ if name.startswith('CQ') else NT_INJ
 
@@ -178,6 +192,20 @@ def load_snapshot(folder):
         s['ion_Z']        = ni['Z'][:]
         s['ion_isotopes'] = ni['isotopes'][:]
     return s
+
+
+def regrid(s, nr):
+    """
+    The snapshot s on nr uniform cells in [r_f[0], r_f[-1]]: profiles
+    interpolated linearly in r (np.interp: constant beyond the end centres).
+    """
+    r_f = np.linspace(s['r_f'][0], s['r_f'][-1], nr + 1)
+    r   = 0.5 * (r_f[1:] + r_f[:-1])
+    out = dict(s, r=r, r_f=r_f)
+    for q in ('E_field', 'T_cold', 'n_cold', 'n_re'):
+        out[q] = np.interp(r, s['r'], s[q])
+    out['n_i'] = np.array([np.interp(r, s['r'], row) for row in s['n_i']])
+    return out
 
 
 def f_re_init(n_re, xi0):
@@ -299,9 +327,8 @@ if not folders:
     sys.exit(f'No snapshots found in {SNAP_DIR}; run DATASET/extract_snapshots.py first.')
 
 os.makedirs(OUT_DIR, exist_ok=True)
-N_tot = (NP_HOT * NXI_HOT + NP_RE * NXI_RE) * 11
 print('=' * 70)
-print(f'Kinetic runs from DATASET snapshots               [LEVEL = {LEVEL}]')
+print(f'Kinetic runs from DATASET snapshots               [LEVEL = {LEVEL}, Nr = {NR or "snapshot"}]')
 print(f'  hot grid  Np = {NP_HOT}  Nxi = {NXI_HOT}   dp = {P_RE/NP_HOT:.2e}')
 print(f'  RE grid   Np = {NP_RE}  Nxi = {NXI_RE}')
 print(f'  dB/B = {DBB:.1e}   A_r = {AR_FACTOR:g} E(r)   advection {os.environ.get("ADV", "upwind")}')
@@ -310,10 +337,13 @@ print('=' * 70)
 for folder in folders:
     name = os.path.basename(folder)
     s = load_snapshot(folder)
+    if NR is not None:
+        s = regrid(s, NR)
     dt = snapshot_dt(name)
 
     ds = make_settings(name, s, dt)
-    TAG = f'{("fullnl" if NONLINEAR else "full") + ("_nosp" if NO_SP else "") if FULL else "kinetic"}_{name}_L{LEVEL}'
+    snap_tag = f'{name}_nr{NR}' if NR is not None else name
+    TAG = f'{("fullnl" if NONLINEAR else "full") + ("_nosp" if NO_SP else "") if FULL else "kinetic"}_{snap_tag}_L{LEVEL}'
     ds.output.setFilename(f'output_{TAG}.h5')
     settings_file = os.path.join(OUT_DIR, f'dream_settings_{TAG}.h5')
     ds.save(settings_file)
@@ -336,4 +366,4 @@ with open(os.path.join(OUT_DIR, 'petsc_num_timesteps.txt'), 'w') as fh:
     fh.write(f'{max(num_timesteps(os.path.basename(f)) for f in folders)}\n')
 
 print()
-print(f'Run:  cd {OUT_DIR} && ./dreami dream_settings_kinetic_<snapshot>_L{LEVEL}.h5')
+print(f'Run:  cd {OUT_DIR} && ./dreami dream_settings_kinetic_<snapshot>{f"_nr{NR}" if NR is not None else ""}_L{LEVEL}.h5')
