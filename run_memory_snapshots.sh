@@ -25,14 +25,20 @@
 #   dreami  the whole run with -dream_log_memory: RSS at every stage of the
 #           construction, of the first time step (rebuild, matrix, solve
 #           including the preconditioner setup) and after all the time
-#           steps -> dreami.log
+#           steps, and the timings (time loop, rebuild, matrix, invert,
+#           first and second solve; the settings must have
+#           output.setTiming(stdout=True), as kinetic_from_snapshots.py
+#           does) -> dreami.log, wall time of srun -> wall_s.txt
 #
 # on $DATADIR/dream_settings_kinetic_<snapshot>_L<LEVEL>.h5
 # (examples/kinetic_from_snapshots.py). Every run has its own folder
 #
-#   $OUTDIR/<snapshot>/<test|dreami>_np<n>/
+#   $OUTDIR/<snapshot>/<test|dreami>_np<n>/          (first run)
+#   $OUTDIR/<snapshot>/dreami_np<n>_r<k>/            (repeat k >= 2)
 #
-# and summarize_memory.py turns the whole $OUTDIR into tables (and a plot):
+# dreami is run REPEATS times (default 1) for less noisy timings; the
+# memory figures are taken from the first run, the timings from the fastest.
+# summarize_memory.py turns the whole $OUTDIR into tables (and plots):
 #
 #   $ python3 summarize_memory.py $OUTDIR
 #
@@ -41,6 +47,7 @@
 #   $ sbatch run_memory_snapshots.sh                          # L2, all snapshots, test + dreami
 #   $ SNAPSHOTS="CQ_tf injection_t0" sbatch run_memory_snapshots.sh
 #   $ NPROCS="1 11 22" RUNS=test sbatch run_memory_snapshots.sh
+#   $ RUNS=dreami REPEATS=3 sbatch run_memory_snapshots.sh    # speed-up only, 3 runs each
 #   $ LEVEL=4 sbatch run_memory_snapshots.sh
 #
 # The radial block Jacobi needs n <= Nr or n a multiple of Nr (each radius
@@ -76,6 +83,7 @@ export PETSC_OPTIONS=${PETSC_OPTIONS:-"-dream_kinetic_only -dream_scale diag"}
 LEVEL=${LEVEL:-2}
 NPROCS=${NPROCS:-"1 11 22 44 88 176"}
 RUNS=${RUNS:-"test dreami"}           # which executables to run
+REPEATS=${REPEATS:-1}                 # runs of dreami per (snapshot, n), for the timings
 
 DREAM_ROOT=${DREAM_ROOT:-$HOME/DREAM}
 DATADIR=${DATADIR:-$DREAM_ROOT/build/iface}
@@ -118,7 +126,7 @@ done
 
 mkdir -p $OUTDIR
 echo "Snapshots: $SNAPSHOTS"
-echo "LEVEL = $LEVEL, NPROCS = '$NPROCS', RUNS = '$RUNS'"
+echo "LEVEL = $LEVEL, NPROCS = '$NPROCS', RUNS = '$RUNS', REPEATS (dreami) = $REPEATS"
 echo "PETSC_OPTIONS = '$PETSC_OPTIONS'"
 echo "Outputs in $OUTDIR"
 
@@ -145,11 +153,13 @@ for snap in $SNAPSHOTS; do
         CPUS_PER_TASK=$((CORES_PER_NODE / n))
 
         for run in $RUNS; do
-            dir=$OUTDIR/$snap/${run}_np${n}
+          nrep=$([ $run == dreami ] && echo $REPEATS || echo 1)
+          for r in $(seq 1 $nrep); do
+            dir=$OUTDIR/$snap/${run}_np${n}$([ $r -gt 1 ] && echo _r$r)
             mkdir -p $dir
             cd $dir
 
-            t0=$(date +%s)
+            t0=$(date +%s.%N)
             if [ $run == test ]; then
                 srun --nodes=1 --ntasks=$n --ntasks-per-node=$n --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores \
                      $DREAM_ROOT/build/iface/testcollisionquantity $SETTINGS -cq_dir $dir > test.log 2>&1
@@ -166,13 +176,16 @@ for snap in $SNAPSHOTS; do
                 ok=$(grep -q "End of resident set size table" dreami.log && echo 1)
                 log=dreami.log
             fi
-            t1=$(date +%s)
+            t1=$(date +%s.%N)
+            wall=$(echo "$t1 - $t0" | bc -l)
+            echo $wall > wall_s.txt
 
             if [ -n "$ok" ]; then
-                echo "=== $snap $run np$n: OK in $((t1 - t0)) s"
+                echo "=== $snap $run np$n run $r: OK in $wall s"
             else
-                echo "=== $snap $run np$n: FAILED (exit code $code) after $((t1 - t0)) s, see $dir/$log"
+                echo "=== $snap $run np$n run $r: FAILED (exit code $code) after $wall s, see $dir/$log"
             fi
+          done
         done
     done
 done

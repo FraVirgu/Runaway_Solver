@@ -32,8 +32,14 @@ For every snapshot and executable it prints
      serial size: collision values, transient weights, interpolation and
      advection/diffusion coefficients, PETSc matrix.
 
+  4. (dreami only) Times, fastest of the repeats (dreami_np<n>_r<k>):
+     srun wall time, time loop, invert, rebuild, matrix, first solve (with
+     the preconditioner setup) and second solve, and the speed-up and
+     parallel efficiency of the time loop against the smallest n.
+
 and writes every stage row to <OUTDIR>/memory_stages.csv. With --plot it
-also saves a figure of peak RSS per rank against n (needs matplotlib).
+also saves a figure of peak RSS per rank and of the dreami speed-up
+against n (needs matplotlib).
 
 Usage:
 
@@ -132,28 +138,112 @@ def parse_components(path):
     return out
 
 
+def to_seconds(text):
+    """'1 minute, 2 seconds, 3 milliseconds, 4 microseconds' -> seconds."""
+    units = {"hour": 3600.0, "minute": 60.0, "second": 1.0, "millisecond": 1e-3, "microsecond": 1e-6}
+    t = 0.0
+    for num, unit in re.findall(r"([\d.]+)\s+(hour|minute|second|millisecond|microsecond)s?\b", text):
+        t += float(num) * units[unit]
+    return t
+
+
+def parse_timings(log, wall_file):
+    """
+    Timings of a complete dreami run [s] (None if missing):
+      wall     srun wall time (construction + time loop + output)
+      loop     'Solved equation system in ...': the time loop
+      invert   'Total invert time': all the linear solves
+      rebuild, matrix   from the percentages of [Timing for Solver linear]
+               times the loop time (the solver's total is the loop, up
+               to the time-stepper overhead)
+      solve1   'iter_0:time': first solve, with the preconditioner setup
+      solve2   'iter_1:time': second solve
+    """
+    t = dict.fromkeys(["wall", "loop", "invert", "rebuild", "matrix", "solve1", "solve2"])
+    if os.path.isfile(wall_file):
+        try:
+            t["wall"] = float(open(wall_file).read().strip())
+        except ValueError:
+            pass
+    pct = {}
+    in_linear = False
+    with open(log, errors="replace") as f:
+        for line in f:
+            if "Solved equation system in" in line:
+                t["loop"] = to_seconds(line.split("Solved equation system in", 1)[1])
+            elif line.startswith("[Timing for"):
+                in_linear = line.startswith("[Timing for Solver linear]")
+            elif "Total invert time:" in line:
+                t["invert"] = float(line.split()[-2])
+            elif line.startswith("iter_0:time"):
+                t["solve1"] = float(line.split()[1])
+            elif line.startswith("iter_1:time"):
+                t["solve2"] = float(line.split()[1])
+            elif in_linear:
+                m = re.match(r"\s+(Rebuild coefficients|Construct matrix):\s+([\d.]+)%", line)
+                if m:
+                    pct[m.group(1)] = float(m.group(2))
+    if t["loop"] is not None:
+        if "Rebuild coefficients" in pct:
+            t["rebuild"] = t["loop"] * pct["Rebuild coefficients"] / 100
+        if "Construct matrix" in pct:
+            t["matrix"] = t["loop"] * pct["Construct matrix"] / 100
+    return t
+
+
 def collect(outdir):
     """
-    {snapshot: {run: {n: {"stages": [...], "components": {...}}}}}
+    {snapshot: {run: {n: {"stages": [...], "components": {...},
+                          "timings": [one dict per complete repeat]}}}}
+    Memory from the first run (folder without _r<k>), timings from all.
     """
     data = {}
     for d in sorted(glob.glob(os.path.join(outdir, "*", "*_np*"))):
-        m = re.fullmatch(r"(test|dreami)_np(\d+)", os.path.basename(d))
+        m = re.fullmatch(r"(test|dreami)_np(\d+)(?:_r(\d+))?", os.path.basename(d))
         if not m or not os.path.isdir(d):
             continue
         run, n = m.group(1), int(m.group(2))
+        first = m.group(3) is None
         snap = os.path.basename(os.path.dirname(d))
         if run == "test":
             path = os.path.join(d, f"cq_np{n}_memory.txt")
         else:
             path = os.path.join(d, "dreami.log")
-        entry = {"stages": [], "components": {}, "path": path}
-        if os.path.isfile(path):
-            entry["stages"] = parse_stages(path)
+        entry = data.setdefault(snap, {}).setdefault(run, {}).setdefault(
+            n, {"stages": [], "components": {}, "timings": [], "path": path})
+        if not os.path.isfile(path):
+            continue
+        stages = parse_stages(path)
+        if first:
+            entry["stages"] = stages
             if run == "test":
                 entry["components"] = parse_components(path)
-        data.setdefault(snap, {}).setdefault(run, {})[n] = entry
+        if run == "dreami" and stages:      # complete run
+            entry["timings"].append(parse_timings(path, os.path.join(d, "wall_s.txt")))
     return data
+
+
+def print_speedup(snap, runs):
+    """Strong scaling of the dreami times, fastest repeat of each n."""
+    best = {}
+    for n, e in runs.items():
+        ts = [t for t in e["timings"] if t["loop"] is not None]
+        if ts:
+            best[n] = (min(ts, key=lambda t: t["loop"]), len(ts))
+    if not best:
+        return
+    ns = sorted(best)
+    n0 = ns[0]
+    print(f"\n  4. time [s] (fastest of the repeats); speed-up and efficiency of the time loop vs n = {n0}")
+    cols = ["wall", "loop", "invert", "rebuild", "matrix", "solve1", "solve2"]
+    print(f"  {'n':>5}  {'runs':>4}  " + "  ".join(f"{c:>9}" for c in cols) + f"  {'speed-up':>8}  {'eff.':>6}")
+    for n in ns:
+        t, k = best[n]
+        sp = best[n0][0]["loop"] / t["loop"] if t["loop"] else float("nan")
+        e = sp * n0 / n
+        print(f"  {n:5d}  {k:4d}  " + "  ".join(
+            f"{t[c]:9.3f}" if t[c] is not None else f"{'-':>9}" for c in cols) + f"  {sp:8.2f}  {e:6.2f}")
+    print("  (loop: time stepping; solve1: first solve incl. PC setup; rebuild/matrix: from the % breakdown)")
 
 
 def eff(ref, ref_n, val, n):
@@ -249,7 +339,28 @@ def plot(path, data):
     if not snaps:
         print("\nNo complete run: no plot")
         return
-    fig, axes = plt.subplots(1, len(snaps), figsize=(4.2 * len(snaps), 3.8), squeeze=False)
+    fig, axes = plt.subplots(2, len(snaps), figsize=(4.2 * len(snaps), 7.4), squeeze=False)
+
+    # Row 2: speed-up of the dreami time loop and of the solves
+    for ax, snap in zip(axes[1], snaps):
+        best = {}
+        for n, e in data[snap].get("dreami", {}).items():
+            ts = [t for t in e["timings"] if t["loop"] is not None]
+            if ts:
+                best[n] = min(ts, key=lambda t: t["loop"])
+        if best:
+            ns = sorted(best)
+            for key, style in (("loop", "o-"), ("invert", "s--"), ("wall", "^:")):
+                if all(best[n][key] for n in ns):
+                    ax.plot(ns, [best[ns[0]][key] / best[n][key] for n in ns], style, label=key)
+            ax.plot(ns, [n / ns[0] for n in ns], ":", color="gray", label="ideal")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel("MPI ranks")
+        ax.grid(True, which="both", alpha=0.3)
+    axes[1][0].set_ylabel(f"dreami speed-up")
+    axes[1][-1].legend(fontsize=7)
+
     for ax, snap in zip(axes[0], snaps):
         for run, style in (("dreami", "o-"), ("test", "s--")):
             byn = {n: e for n, e in data[snap].get(run, {}).items() if e["stages"]}
@@ -289,6 +400,8 @@ def main():
         for run in ("test", "dreami"):
             if run in data[snap]:
                 print_scaling(snap, run, data[snap][run])
+                if run == "dreami":
+                    print_speedup(snap, data[snap][run])
 
     csv_path = os.path.join(args.outdir, "memory_stages.csv")
     write_csv(csv_path, data)
