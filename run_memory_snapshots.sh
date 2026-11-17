@@ -132,8 +132,11 @@ echo "Outputs in $OUTDIR"
 
 for snap in $SNAPSHOTS; do
     SETTINGS=$DATADIR/dream_settings_kinetic_${snap}_L${LEVEL}.h5
-    # Nr = number of radial cells (r_f holds the Nr+1 cell faces)
-    NR=$(python3 -c "import h5py; print(h5py.File('$SETTINGS', 'r')['radialgrid/r_f'].shape[0] - 1)" 2>/dev/null)
+    # Nr = number of radial cells (r_f holds the Nr+1 cell faces); h5ls
+    # (hdf5 module) prints "r_f  Dataset {12}" or "{12/12}"; h5py as fallback
+    NF=$(h5ls $SETTINGS/radialgrid/r_f 2>/dev/null | sed -nE 's/.*Dataset \{([0-9]+).*/\1/p')
+    [ -z "$NF" ] && NF=$(python3 -c "import h5py; print(h5py.File('$SETTINGS', 'r')['radialgrid/r_f'].shape[0])" 2>/dev/null)
+    NR=$([ -n "$NF" ] && echo $((NF - 1)))
     echo
     echo "##### $snap: Nr = ${NR:-unknown} #####"
 
@@ -167,9 +170,13 @@ for snap in $SNAPSHOTS; do
                 ok=$([ -f cq_np${n}_memory.txt ] && grep -q "End of resident set size table" cq_np${n}_memory.txt && echo 1)
                 log=test.log
             else
-                # dreami writes its output file in the current directory
+                # dreami writes its output file in the current directory.
+                # -dream_log_memory goes through PETSC_OPTIONS: dreami's own
+                # command line (getopt) only takes -a -h -l -s and exits on
+                # anything else
+                PETSC_OPTIONS="$PETSC_OPTIONS -dream_log_memory" \
                 srun --nodes=1 --ntasks=$n --ntasks-per-node=$n --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores \
-                     $DREAM_ROOT/build/iface/dreami $SETTINGS -dream_log_memory > dreami.log 2>&1
+                     $DREAM_ROOT/build/iface/dreami $SETTINGS > dreami.log 2>&1
                 code=$?
                 # dreami returns 0 even when the run failed: the table is
                 # printed only after a complete run
