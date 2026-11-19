@@ -224,7 +224,9 @@ for snap in $SNAPSHOTS; do
         fi
         # spread the ranks over the whole node (both sockets, memory channels)
         CPUS_PER_TASK=$((CORES_PER_NODE / ppn))
-        SRUN_LAYOUT="--nodes=$nn --ntasks=$n --ntasks-per-node=$ppn --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores"
+        # --kill-on-bad-exit: a rank killed (e.g. out of memory) ends the whole
+        # step; otherwise the others wait in MPI until the job's time limit
+        SRUN_LAYOUT="--nodes=$nn --ntasks=$n --ntasks-per-node=$ppn --cpus-per-task=$CPUS_PER_TASK --cpu-bind=cores --kill-on-bad-exit=1"
         echo "--- n = $n: $nn node(s) x $ppn ranks, $CPUS_PER_TASK cores per rank"
 
         for run in $RUNS; do

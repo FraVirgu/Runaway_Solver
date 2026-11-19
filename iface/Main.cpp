@@ -270,14 +270,10 @@ int main(int argc, char *argv[])
 
         try
         {
-            printf("ciao");
             DREAM::Settings *settings = DREAM::SimulationGenerator::CreateSettings();
-            printf("ciao");
             DREAM::SettingsSFile::LoadSettings(settings, a->input_filename);
             DREAM::RecordProcessMemory("dreami: settings loaded");
-            printf("ciao");
             sim = DREAM::SimulationGenerator::ProcessSettings(settings);
-            printf("ciao");
             // From here on, only rank 0 prints
             silence_stdout(my_rank);
 

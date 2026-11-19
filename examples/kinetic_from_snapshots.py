@@ -310,7 +310,12 @@ def make_settings(name, s, dt):
         if NO_SP:
             ds.eqsys.f_hot.setParticleSource(particleSource=HotElectrons.PARTICLE_SOURCE_ZERO)
 
-    ds.other.include('fluid', 'nu_s', 'nu_D')
+    # Output diagnostics ('other' quantities; the unknowns are always saved).
+    # 'fluid': one value per radius, negligible. Not 'nu_s'/'nu_D': on the
+    # full momentum grids and replicated on every rank with 4 old steps
+    # (~1.1 GB per rank at Nr = 44, L2); the solver's own nu_s/nu_D (the
+    # distributed collision quantities) do not depend on this.
+    ds.other.include('fluid')
 
     ds.timestep.setTmax(dt)
     ds.timestep.setNt(num_timesteps(name))
