@@ -95,7 +95,7 @@ set(fvm_grid
     "${PROJECT_SOURCE_DIR}/fvm/Grid/RadialGridGenerator.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Grid/FluxSurfaceAverager.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Grid/FluxSurfaceQuantity.cpp"
-    "${PROJECT_SOURCE_DIR}/fvm/Grid/BounceAverager.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Grid/BounceAverager.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Grid/BounceSurfaceQuantity.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Grid/BounceSurfaceMetric.cpp"
 )

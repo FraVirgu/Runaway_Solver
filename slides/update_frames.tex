@@ -1,5 +1,7 @@
 % Update slides, 17 Nov 2026: recent changes and the memory / speed-up
-% tests of the kinetic-only solver (job 2859315 on Pitagora).
+% tests of the kinetic-only solver (job 2877157 on Pitagora, output
+% diagnostics nu_s/nu_D off; the first version, job 2859315, had them on:
+% its figures are in old_2859315/).
 % Figures: make_update_plots.py. Include with \input{update_frames}.
 
 % ---------------------------------------------------------------------
@@ -80,16 +82,16 @@
         \begin{column}{0.42\textwidth}
             \small
             \begin{itemize}
-                \item CQ final: 4.83\,GB (1 rank) $\to$ 1.60\,GB (11) $\to$ 1.30\,GB (176)
-                \item \textbf{plateau at $\approx 1.3$\,GB} from 44 ranks on
+                \item CQ final: 4.59\,GB (1 rank) $\to$ 1.30\,GB (11) $\to$ 1.04\,GB (176)
+                \item \textbf{plateau at $\approx 1.0$\,GB} from 44 ranks on
                 \item same behaviour for the 3 snapshots
                 \item the distributed parts do scale:
                 \begin{itemize}
-                    \item solve (incl.\ AMG setup) 2.78\,GB $\to$ 32\,MB
+                    \item solve (incl.\ AMG setup) 2.82\,GB $\to$ 33\,MB
                     \item PETSc matrix 463 $\to$ 5\,MB
                     \item coefficients 302 $\to$ 10\,MB
                 \end{itemize}
-                \item at 176 ranks: $\approx 225$\,GB per node, vs 4.8\,GB serial
+                \item at 176 ranks: $\approx 180$\,GB per node, vs 4.6\,GB serial
             \end{itemize}
         \end{column}
     \end{columns}
@@ -106,11 +108,11 @@
             \begin{itemize}
                 \item \textbf{test}: construction + first rebuild, no solve
                 \begin{itemize}
-                    \item 1.95\,GB $\to$ 1.24\,GB, flat from 11 ranks on
+                    \item 1.71\,GB $\to$ 0.97\,GB, flat from 11 ranks on
                 \end{itemize}
                 \item \textbf{dreami}: whole run
                 \begin{itemize}
-                    \item 4.83\,GB $\to$ 1.30\,GB
+                    \item 4.59\,GB $\to$ 1.04\,GB
                 \end{itemize}
                 \item the gap between the two (the solve) shrinks with $n$:
                       the solver memory is distributed
@@ -129,20 +131,25 @@
         \end{column}
         \begin{column}{0.44\textwidth}
             \small
-            Still \textbf{replicated} on every rank ($\approx 1.1$\,GB):
+            Still \textbf{replicated} on every rank ($\approx 0.75$\,GB):
             \vspace{0.3em}
 
             \begin{tabular}{lr}
                 \hline
                 runaway grid data & 374\,MB \\
-                output quantities & 286\,MB \\
                 system setup (vectors) & 142\,MB \\
                 hot-tail grid data & 100\,MB \\
                 unknowns ($f$ history) & 72\,MB \\
                 equation terms & 64\,MB \\
+                output quantities & \textbf{0}\,MB \\
                 \hline
             \end{tabular}
             \vspace{0.5em}
+
+            Output quantities: was 286\,MB, the $\nu_s$, $\nu_D$ diagnostics
+            on the full momentum grids; removed from the output
+            (the solver's own $\nu_s$, $\nu_D$ are distributed)
+            \vspace{0.3em}
 
             Above 22 ranks this is almost all of a rank's memory
         \end{column}
@@ -164,7 +171,7 @@
     \vspace{0.3em}
     \small
     \begin{itemize}
-        \item time loop: best at 22--44 ranks, $\approx 7$--$8\times$ (CQ final: 11.6\,s $\to$ 1.47\,s at 22 ranks)
+        \item time loop: best at 22--44 ranks, $\approx 7$--$8\times$ (CQ final: 11.7\,s $\to$ 1.43\,s at 22 ranks)
         \item for $n > N_r$ each radius block is split over $n/N_r$ ranks:
               AMG/ILU setup dominated by communication
         \item whole run: at most $3.4\times$ (11 ranks), $1.0\times$ at 176 ranks
@@ -178,9 +185,9 @@
     \end{center}
     \small
     \begin{itemize}
-        \item 1 rank: 13.8\,s, of which 10.3\,s linear solve and 2.2\,s construction
-        \item 22 ranks: 4.2\,s, the solve is down to 1.2\,s, the construction is 2.7\,s
-        \item 176 ranks: 14.0\,s, construction 7.4\,s (replicated work, all ranks at the same time)
+        \item 1 rank: 13.8\,s, of which 10.4\,s linear solve and 2.1\,s construction
+        \item 22 ranks: 4.1\,s, the solve is down to 1.2\,s, the construction is 2.7\,s
+        \item 176 ranks: 13.4\,s, construction 7.1\,s (replicated work, all ranks at the same time)
               and solve 4.9\,s (communication)
         \item \textbf{the construction does not scale}: same cause as the replicated memory
     \end{itemize}
@@ -190,15 +197,15 @@
 \begin{frame}{Conclusions and next steps}
     \begin{itemize}
         \item Distributed matrix, solver and coefficients: scale as expected
-        \item \textbf{Now limited by replicated data} ($\approx 1.1$\,GB per rank at L2):
-              memory and construction time
+        \item \textbf{Now limited by replicated data} ($\approx 0.75$\,GB per rank at L2,
+              after removing the 286\,MB of output diagnostics): memory and construction time
         \item Best setting at L2: 11--22 ranks, $\approx 8\times$ speed-up of the time loop,
-              1.4--1.6\,GB per rank
+              1.1--1.3\,GB per rank
     \end{itemize}
     \vspace{0.5em}
     Next:
     \begin{enumerate}
-        \item reduce replicated data: output quantities (286\,MB), system vectors (142\,MB),
+        \item reduce replicated data: system vectors (142\,MB),
               then the grids (474\,MB)
         \item more radial cells ($N_r > 11$): more independent blocks for the radial block Jacobi
         \item toroidal geometry (in progress): analytic shape fitted to the ITER equilibrium
