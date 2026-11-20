@@ -202,6 +202,14 @@ void Operator::RebuildTransientAdvectionDiffusionTerms(const real_t t, const rea
         if (log)
             printf("[rebuild]           Allreduce of advection-diffusion total %37s %9.3f ms\n", "",
                    TermLog::ms(t0, TermLog::clk::now()));
+
+        // The trapping boundary condition needs the coefficients on the
+        // face at -xi_T (and the negative trapped radial faces)
+        t0 = TermLog::clk::now();
+        adterm->GatherTrappingBoundaryCoefficients();
+        if (log)
+            printf("[rebuild]           gather trapping boundary coefficients %26s %9.3f ms\n", "",
+                   TermLog::ms(t0, TermLog::clk::now()));
     }
 
     // Boundary conditions
@@ -556,6 +564,14 @@ void Operator::RebuildTerms(const real_t t, const real_t dt, UnknownQuantityHand
         adterm->GatherUpperBoundaryCoefficients();
         if (log)
             printf("[rebuild]               gather upper p boundary coefficients %26s %9.3f ms\n", "",
+                   TermLog::ms(t0, TermLog::clk::now()));
+
+        // The trapping boundary condition needs the coefficients on the
+        // face at -xi_T (and the negative trapped radial faces)
+        t0 = TermLog::clk::now();
+        adterm->GatherTrappingBoundaryCoefficients();
+        if (log)
+            printf("[rebuild]               gather trapping boundary coefficients %25s %9.3f ms\n", "",
                    TermLog::ms(t0, TermLog::clk::now()));
     }
 

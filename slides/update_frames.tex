@@ -1,7 +1,7 @@
 % Update slides, 17 Nov 2026: recent changes and the memory / speed-up
 % tests of the kinetic-only solver (job 2877157 on Pitagora, output
 % diagnostics nu_s/nu_D off; the first version, job 2859315, had them on:
-% its figures are in old_2859315/).
+% its figures are in v1_2859315/).
 % Figures: make_update_plots.py. Include with \input{update_frames}.
 
 % ---------------------------------------------------------------------
@@ -77,7 +77,7 @@
 \begin{frame}{Memory per rank}
     \begin{columns}[T]
         \begin{column}{0.58\textwidth}
-            \includegraphics[width=\linewidth]{fig_memory_scaling}
+            \includegraphics[width=\linewidth]{v2_2877157/fig_memory_scaling}
         \end{column}
         \begin{column}{0.42\textwidth}
             \small
@@ -101,7 +101,7 @@
 \begin{frame}{Memory: whole run vs construction only}
     \begin{columns}[T]
         \begin{column}{0.58\textwidth}
-            \includegraphics[width=\linewidth]{memory_CQ_tf}
+            \includegraphics[width=\linewidth]{v2_2877157/memory_CQ_tf}
         \end{column}
         \begin{column}{0.42\textwidth}
             \small
@@ -127,7 +127,7 @@
 \begin{frame}{Where the memory of a rank goes}
     \begin{columns}[T]
         \begin{column}{0.56\textwidth}
-            \includegraphics[width=\linewidth]{fig_memory_breakdown}
+            \includegraphics[width=\linewidth]{v2_2877157/fig_memory_breakdown}
         \end{column}
         \begin{column}{0.44\textwidth}
             \small
@@ -160,11 +160,11 @@
 \begin{frame}{Speed-up}
     \begin{columns}[T]
         \begin{column}{0.5\textwidth}
-            \includegraphics[width=\linewidth]{fig_speedup}
+            \includegraphics[width=\linewidth]{v2_2877157/fig_speedup}
             \centering{\footnotesize time loop, 3 snapshots}
         \end{column}
         \begin{column}{0.5\textwidth}
-            \includegraphics[width=\linewidth]{speedup_CQ_tf}
+            \includegraphics[width=\linewidth]{v2_2877157/speedup_CQ_tf}
             \centering{\footnotesize CQ final: loop, linear solve, whole run}
         \end{column}
     \end{columns}
@@ -181,7 +181,7 @@
 % ---------------------------------------------------------------------
 \begin{frame}{Where the time goes (CQ final)}
     \begin{center}
-        \includegraphics[width=0.85\linewidth]{time_breakdown_CQ_tf}
+        \includegraphics[width=0.85\linewidth]{v2_2877157/time_breakdown_CQ_tf}
     \end{center}
     \small
     \begin{itemize}

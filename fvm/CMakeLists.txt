@@ -43,7 +43,7 @@ set(fvm_equation
     "${PROJECT_SOURCE_DIR}/fvm/Equation/BoundaryConditions/PXiAdvectionDiffusionBoundaryCondition.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Equation/BoundaryConditions/PXiExternalKineticKinetic.cpp"
     "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Equation/BoundaryConditions/PXiExternalLoss.cpp"
-    "${PROJECT_SOURCE_DIR}/fvm/Equation/BoundaryConditions/PXiInternalTrapping.cpp"
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/fvm/Equation/BoundaryConditions/PXiInternalTrapping.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/BoundaryConditions/PInternalBoundaryCondition.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/BoundaryConditions/XiInternalBoundaryCondition.cpp"
     "${PROJECT_SOURCE_DIR}/fvm/Equation/ConstantParameter.cpp"

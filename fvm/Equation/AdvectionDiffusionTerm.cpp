@@ -264,11 +264,12 @@ void AdvectionDiffusionTerm::PrintCoefficientNorms(const real_t dt)
                 if (!this->AdvectionTerm::IsLocalRow(offset + j * np1 + i))
                     continue;
 
-                const len_t c = j * np1 + i;         // cell / lower radial face / lower xi face
-                const len_t f1 = j * (np1 + 1) + i;  // lower p face
+                const len_t c = j * np1 + i;        // cell / lower radial face / lower xi face
+                const len_t f1 = j * (np1 + 1) + i; // lower p face
                 const real_t h1 = dp1[i], h2 = dp2[j];
                 // mean of |x| on the lower and upper face of the cell
-                auto m = [](const real_t lo, const real_t hi) { return 0.5 * (fabs(lo) + fabs(hi)); };
+                auto m = [](const real_t lo, const real_t hi)
+                { return 0.5 * (fabs(lo) + fabs(hi)); };
 
                 real_t cr = 0, cp = 0, cx = 0;
                 if (adv)
@@ -280,10 +281,8 @@ void AdvectionDiffusionTerm::PrintCoefficientNorms(const real_t dt)
                 if (diff)
                 {
                     cr += m(this->drr[ir][c], this->drr[ir + 1][c]) / (dr * dr);
-                    cp += m(this->d11[ir][f1], this->d11[ir][f1 + 1]) / (h1 * h1)
-                        + m(this->d12[ir][f1], this->d12[ir][f1 + 1]) / (h1 * h2);
-                    cx += m(this->d22[ir][c], this->d22[ir][c + np1]) / (h2 * h2)
-                        + m(this->d21[ir][c], this->d21[ir][c + np1]) / (h1 * h2);
+                    cp += m(this->d11[ir][f1], this->d11[ir][f1 + 1]) / (h1 * h1) + m(this->d12[ir][f1], this->d12[ir][f1 + 1]) / (h1 * h2);
+                    cx += m(this->d22[ir][c], this->d22[ir][c + np1]) / (h2 * h2) + m(this->d21[ir][c], this->d21[ir][c + np1]) / (h1 * h2);
                 }
                 cr *= dt;
                 cp *= dt;
@@ -334,7 +333,8 @@ void AdvectionDiffusionTerm::PrintCoefficientNorms(const real_t dt)
  *
  * Collective: must be called by all ranks.
  */
-void AdvectionDiffusionTerm::GatherUpperBoundaryCoefficients() {
+void AdvectionDiffusionTerm::GatherUpperBoundaryCoefficients()
+{
     const len_t nr = this->AdvectionTerm::nr;
     const len_t *n1 = this->AdvectionTerm::n1;
     const len_t *n2 = this->AdvectionTerm::n2;
@@ -344,38 +344,212 @@ void AdvectionDiffusionTerm::GatherUpperBoundaryCoefficients() {
 
     len_t nFaces = 0;
     upperOffset.resize(nr);
-    for (len_t ir = 0; ir < nr; ir++) {
+    for (len_t ir = 0; ir < nr; ir++)
+    {
         upperOffset[ir] = nFaces;
         nFaces += n2[ir];
     }
 
     // [F1 of all faces, D11 of all faces]
-    std::vector<real_t> buf(2*nFaces, 0);
+    std::vector<real_t> buf(2 * nFaces, 0);
 
     len_t offset = 0, k = 0;
-    for (len_t ir = 0; ir < nr; ir++) {
+    for (len_t ir = 0; ir < nr; ir++)
+    {
         const len_t np1 = n1[ir];
-        for (len_t j = 0; j < n2[ir]; j++, k++) {
-            if (!this->AdvectionTerm::IsLocalRow(offset + j*np1 + np1-1))
+        for (len_t j = 0; j < n2[ir]; j++, k++)
+        {
+            if (!this->AdvectionTerm::IsLocalRow(offset + j * np1 + np1 - 1))
                 continue;
 
             if (adv)
-                buf[k]        = this->f1[ir][j*(np1+1) + np1];
+                buf[k] = this->f1[ir][j * (np1 + 1) + np1];
             if (diff)
-                buf[nFaces+k] = this->d11[ir][j*(np1+1) + np1];
+                buf[nFaces + k] = this->d11[ir][j * (np1 + 1) + np1];
         }
-        offset += np1*n2[ir];
+        offset += np1 * n2[ir];
     }
 
     PetscMPIInt nRanks;
     MPI_Comm_size(PETSC_COMM_WORLD, &nRanks);
     if (nRanks > 1)
-        MPI_Allreduce(MPI_IN_PLACE, buf.data(), (int)(2*nFaces), MPI_DOUBLE, MPI_SUM, PETSC_COMM_WORLD);
+        MPI_Allreduce(MPI_IN_PLACE, buf.data(), (int)(2 * nFaces), MPI_DOUBLE, MPI_SUM, PETSC_COMM_WORLD);
 
     upperF1.assign(buf.begin(), buf.begin() + nFaces);
     upperD11.assign(buf.begin() + nFaces, buf.end());
 }
 
+/**
+ * Collect, on every rank, the coefficients read by the trapping boundary
+ * condition (PXiInternalTrapping) when it moves the flux entering the
+ * negative trapped region onto the positive side.
+ *
+ * At every radius ir:
+ *   jm  first xi cell of the negative trapped region: its lower xi face
+ *       (face jm of the P2 flux grid) is the face at -xi_T. The flux
+ *       through it (F2, D22, D21 and the xi interpolation deltas, for every
+ *       momentum index i) is added to the rows of the mirrored line jp.
+ *   km  every xi line whose cell is negative trapped at the radial face
+ *       (Grid::IsNegativePitchTrappedIgnorableRadialFluxCell). The flux
+ *       through radial face ir of that line (Fr, Drr and the radial
+ *       deltas) is added to the rows of the mirrored line kp.
+ *
+ * Each rank only stores the coefficients of the cells whose rows it owns,
+ * and jm (km) and jp (kp) are in general on different ranks. As in
+ * GatherUpperBoundaryCoefficients(), the layout of the buffer follows from
+ * the grid only (the same on every rank), every value is filled by exactly
+ * one rank (the owner of the cell (ir, jm, i), resp. (ir, km, i), next to
+ * the face, which stores and computes it), the others leave 0, and the sum
+ * over all ranks is kept on every rank (see GetTrappingXi/R()).
+ *
+ * Both sets of interpolation deltas are kept (FULL and JACOBIAN mode; they
+ * are equal when JacobianIsSame()).
+ *
+ * Collective: must be called by all ranks, after Rebuild() (the
+ * interpolation coefficients must have been built).
+ */
+void AdvectionDiffusionTerm::GatherTrappingBoundaryCoefficients()
+{
+    Grid *g = this->AdvectionTerm::grid;
+    const len_t nr = this->AdvectionTerm::nr;
+    const len_t *n1 = this->AdvectionTerm::n1;
+    const len_t *n2 = this->AdvectionTerm::n2;
+
+    trapJm.clear();
+    trapKm.clear();
+    trapXiOffset.clear();
+    trapROffset.clear();
+    trapXi.clear();
+    trapR.clear();
+
+    // No trapped region, or a fluid grid: nothing to collect. Both are the
+    // same on every rank, so all ranks return together.
+    if (!g->HasTrapped() || g->GetNCells() == nr)
+        return;
+
+    const bool adv = (this->advectionterms.size() > 0);
+    const bool diff = (this->diffusionterms.size() > 0);
+
+    AdvectionInterpolationCoefficient *dXi = this->AdvectionTerm::delta2;
+    AdvectionInterpolationCoefficient *dR = this->AdvectionTerm::deltar;
+    const auto FULL = AdvectionInterpolationCoefficient::AD_INTERP_MODE_FULL;
+    const auto JAC = AdvectionInterpolationCoefficient::AD_INTERP_MODE_JACOBIAN;
+
+    // Slot of one face value: [F2, D22, D21, deltas (FULL), deltas (JACOBIAN)]
+    // and [Fr, Drr, deltas (FULL), deltas (JACOBIAN)]
+    trapW = dXi->GetStencilSize();
+    trapXiStride = TRAP_XI_DELTA + 2 * trapW;
+    trapRStride = TRAP_R_DELTA + 2 * trapW;
+
+    // (a) Layout, from the (replicated) grid only: the same on every rank
+    trapJm.assign(nr, 0);
+    trapKm.assign(nr, std::vector<len_t>());
+    trapXiOffset.assign(nr + 1, 0);
+    trapROffset.assign(nr + 1, 0);
+    for (len_t ir = 0; ir < nr; ir++)
+    {
+        const len_t np = n1[ir], nxi = n2[ir];
+
+        len_t jm = nxi;
+        for (len_t j = 0; j < nxi; j++)
+            if (g->IsNegativePitchTrappedIgnorableCell(ir, j))
+            {
+                jm = j;
+                break;
+            }
+        trapJm[ir] = jm;
+
+        for (len_t km = 0; km < nxi; km++)
+            if (g->IsNegativePitchTrappedIgnorableRadialFluxCell(ir, km))
+                trapKm[ir].push_back(km);
+
+        trapXiOffset[ir + 1] = trapXiOffset[ir] + (jm < nxi ? np * trapXiStride : 0);
+        trapROffset[ir + 1] = trapROffset[ir] + trapKm[ir].size() * np * trapRStride;
+    }
+
+    // Both parts in one buffer, for a single Allreduce
+    const len_t NX = trapXiOffset[nr], NR = trapROffset[nr];
+    std::vector<real_t> buf(NX + NR, 0);
+
+    // (b) Fill the values of the cells owned by this rank
+    len_t offset = 0;
+    for (len_t ir = 0; ir < nr; ir++)
+    {
+        const len_t np = n1[ir], nxi = n2[ir];
+        const len_t jm = trapJm[ir];
+
+        // XI: face jm, filled by the owner of cell (ir, jm, i)
+        if (jm < nxi)
+        {
+            for (len_t i = 0; i < np; i++)
+            {
+                if (!this->AdvectionTerm::IsLocalRow(offset + jm * np + i))
+                    continue;
+
+                real_t *b = buf.data() + trapXiOffset[ir] + i * trapXiStride;
+                if (adv)
+                {
+                    b[TRAP_F2] = this->AdvectionTerm::F2(ir, i, jm, this->AdvectionTerm::f2);
+                    if (dXi->IsStored(ir, jm))
+                    {
+                        const real_t *d = dXi->GetCoefficient(ir, i, jm, FULL);
+                        const real_t *dj = dXi->GetCoefficient(ir, i, jm, JAC);
+                        for (len_t n = 0; n < trapW; n++)
+                        {
+                            b[TRAP_XI_DELTA + n] = d[n];
+                            b[TRAP_XI_DELTA + trapW + n] = dj[n];
+                        }
+                    }
+                }
+                if (diff)
+                {
+                    b[TRAP_D22] = this->DiffusionTerm::D22(ir, i, jm, this->DiffusionTerm::d22);
+                    b[TRAP_D21] = this->DiffusionTerm::D21(ir, i, jm, this->DiffusionTerm::d21);
+                }
+            }
+        }
+
+        // RADIAL: face ir of every line km, filled by the owner of cell (ir, km, i)
+        for (len_t q = 0; q < trapKm[ir].size(); q++)
+        {
+            const len_t km = trapKm[ir][q];
+            for (len_t i = 0; i < np; i++)
+            {
+                if (!this->AdvectionTerm::IsLocalRow(offset + km * np + i))
+                    continue;
+
+                real_t *b = buf.data() + NX + trapROffset[ir] + (q * np + i) * trapRStride;
+                if (adv)
+                {
+                    b[TRAP_FR] = this->AdvectionTerm::Fr(ir, i, km, this->AdvectionTerm::fr);
+                    if (dR->IsStored(ir, km))
+                    {
+                        const real_t *d = dR->GetCoefficient(ir, i, km, FULL);
+                        const real_t *dj = dR->GetCoefficient(ir, i, km, JAC);
+                        for (len_t n = 0; n < trapW; n++)
+                        {
+                            b[TRAP_R_DELTA + n] = d[n];
+                            b[TRAP_R_DELTA + trapW + n] = dj[n];
+                        }
+                    }
+                }
+                if (diff)
+                    b[TRAP_DRR] = this->DiffusionTerm::Drr(ir, i, km, this->DiffusionTerm::drr);
+            }
+        }
+
+        offset += np * nxi;
+    }
+
+    // (c) Sum over ranks: every value comes from exactly one rank
+    PetscMPIInt nRanks;
+    MPI_Comm_size(PETSC_COMM_WORLD, &nRanks);
+    if (nRanks > 1 && !buf.empty())
+        MPI_Allreduce(MPI_IN_PLACE, buf.data(), (int)buf.size(), MPI_DOUBLE, MPI_SUM, PETSC_COMM_WORLD);
+
+    trapXi.assign(buf.begin(), buf.begin() + NX);
+    trapR.assign(buf.begin() + NX, buf.end());
+}
 /**
  * Insert the combined advection and diffusion terms into the matrix.
  *
