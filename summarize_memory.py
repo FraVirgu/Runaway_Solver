@@ -472,10 +472,116 @@ def plot(path, data):
     print(f"\nPlot saved as {path}")
 
 
+# Categorical palette (fixed order) and ink of the breakdown figure
+SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
+SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
+
+# Stage groups of the memory breakdown, in stacking order (first match wins)
+MEM_GROUPS = [
+    ("MPI, PETSc, executable (base)", lambda s: "MPI_Init" in s),
+    ("grids (incl. bounce averages)", lambda s: "grid" in s),
+    ("settings, atomic data",         lambda s: "settings" in s or any(k in s for k in ("ADAS", "NIST", "AMJUEL"))),
+    ("PETSc matrix",                  lambda s: "matrix allocated" in s),
+    ("equation system",               lambda s: s.startswith("eqsys:")),
+    ("coefficients rebuild, assembly", lambda s: "rebuild" in s or "step 1 matrix" in s),
+    ("linear solve (incl. PC setup)", lambda s: "solve" in s),
+    ("other (time loop, output)",     lambda s: True),
+]
+
+TIME_GROUPS = [
+    ("setup and output (wall - loop)", lambda t: t["wall"] - t["loop"]),
+    ("coefficients rebuild",           lambda t: t["rebuild"]),
+    ("matrix assembly",                lambda t: t["matrix"]),
+    ("linear solves (incl. PC setup)", lambda t: t["invert"]),
+    ("other, time loop",               lambda t: t["loop"] - t["rebuild"] - t["matrix"] - t["invert"]),
+]
+
+
+def plot_breakdown(path, data):
+    """
+    Stacked bars per snapshot (columns) of the dreami runs: memory of the
+    largest rank split by stage group ('added' column of the stage table,
+    summed per group), and time split by phase (fastest repeat).
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print(f"\nmatplotlib not available: no breakdown plot ({path})")
+        return
+
+    snaps = sorted(s for s in data
+                   if any(e["stages"] for e in data[s].get("dreami", {}).values()))
+    if not snaps:
+        print("\nNo complete dreami run: no breakdown plot")
+        return
+
+    plt.rcParams.update({"font.size": 9, "axes.edgecolor": INK2, "axes.labelcolor": INK,
+                         "xtick.color": INK2, "ytick.color": INK2, "text.color": INK})
+    fig, axes = plt.subplots(2, len(snaps), figsize=(4.4 * len(snaps), 8.0),
+                             squeeze=False, facecolor=SURFACE)
+
+    def bars(ax, ns, groups, values, ylabel, title=None):
+        x = range(len(ns))
+        bottom = [0.0] * len(ns)
+        for k, (label, _) in enumerate(groups):
+            h = [values[n][k] for n in ns]
+            ax.bar(x, h, bottom=bottom, width=0.62, color=SERIES[k], label=label,
+                   edgecolor=SURFACE, linewidth=1.5)
+            bottom = [b + v for b, v in zip(bottom, h)]
+        for i, tot in enumerate(bottom):
+            ax.text(i, tot, f"{tot:.3g}", ha="center", va="bottom", fontsize=7, color=INK2)
+        ax.set_xticks(list(x), [str(n) for n in ns])
+        ax.set_xlabel("MPI ranks")
+        ax.set_ylabel(ylabel)
+        ax.set_facecolor(SURFACE)
+        ax.grid(True, axis="y", color=GRID, linewidth=0.8)
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        if title:
+            ax.set_title(title, color=INK)
+
+    for col, snap in enumerate(snaps):
+        byn = {n: e for n, e in data[snap]["dreami"].items() if e["stages"]}
+        ns = sorted(byn)
+
+        # Memory [GB]: 'added' of each stage on the largest rank, per group
+        mem = {}
+        for n in ns:
+            v = [0.0] * len(MEM_GROUPS)
+            for r in byn[n]["stages"]:
+                k = next(i for i, (_, match) in enumerate(MEM_GROUPS) if match(r["stage"]))
+                v[k] += max(r["added"], 0.0) / 1024
+            mem[n] = v
+        bars(axes[0][col], ns, MEM_GROUPS, mem, "memory per rank, largest rank [GB]", snap)
+
+        # Time [s], fastest repeat
+        tim = {}
+        for n in ns:
+            t, _ = best_timing(byn[n])
+            if t is None or any(t[k] is None for k in ("wall", "loop", "rebuild", "matrix", "invert")):
+                continue
+            tim[n] = [max(f(t), 0.0) for _, f in TIME_GROUPS]
+        if tim:
+            bars(axes[1][col], sorted(tim), TIME_GROUPS, tim, "time [s]")
+
+    for row in range(2):
+        h, l = axes[row][0].get_legend_handles_labels()
+        axes[row][-1].legend(h[::-1], l[::-1], fontsize=7, frameon=False,
+                             loc="upper left", bbox_to_anchor=(1.02, 1.0))
+    fig.tight_layout()
+    fig.savefig(path, dpi=200, facecolor=SURFACE, bbox_inches="tight")
+    print(f"\nBreakdown plot saved as {path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0].strip())
     parser.add_argument("outdir", help="OUTDIR of run_memory_snapshots.sh")
     parser.add_argument("--plot", metavar="FILE", help="save a plot of peak RSS per rank against n")
+    parser.add_argument("--breakdown", metavar="FILE",
+                        help="save stacked bars of memory per stage group and time per phase (dreami)")
     args = parser.parse_args()
 
     data = collect(args.outdir)
@@ -502,6 +608,8 @@ def main():
         if series:
             root, ext = os.path.splitext(args.plot)
             plot_weak(f"{root}_weak{ext or '.png'}", series)
+    if args.breakdown:
+        plot_breakdown(args.breakdown, data)
     return 0
 
 
