@@ -132,6 +132,33 @@ NT_INJ = int(os.environ.get('NT_INJ', 1))
 NR     = int(os.environ['NR']) if os.environ.get('NR') else None   # None: snapshot's
 NTHETA = int(os.environ.get('NTHETA', 20))
 
+# Physics checks (check_physics.py); the defaults give the normal runs
+#   E_SCALE   multiplies E(r) (and A_r = AR_FACTOR E): 0 = equilibrium test
+#   GEOMETRY  toroidal (default) | thin | cylinder
+#             thin:     analytic toroidal, R0 x 100 (a/R0 ~ 3e-3), circular
+#                       unshifted surfaces, uniform G/R0 = B0: trapped
+#                       fraction ~ sqrt(2 a/R0) ~ 0.08 at the edge, |B| a few
+#                       % above B0 (B_pol kept): the cylindrical limit
+#             cylinder: DREAM's cylindrical grid with the same B0 and r grid
+#             (run both without transport: DBB=0 AR_FACTOR=0, since the
+#             Rechester-Rosenbluth coefficient grows with R0 q)
+E_SCALE  = float(os.environ.get('E_SCALE', 1.0))
+GEOMETRY = os.environ.get('GEOMETRY', 'toroidal').lower()
+if GEOMETRY not in ('toroidal', 'thin', 'cylinder'):
+    sys.exit(f"GEOMETRY = '{GEOMETRY}': use toroidal, thin or cylinder")
+
+
+def variant_suffix():
+    """File-name suffix of a non-default variant (empty for the normal runs)."""
+    s = ''
+    if GEOMETRY != 'toroidal':
+        s += f'_{GEOMETRY}'
+    if E_SCALE != 1.0:
+        s += f'_E{E_SCALE:g}'
+    if DBB == 0 and AR_FACTOR == 0:
+        s += '_notransport'
+    return s
+
 def num_timesteps(name):
     return NT_CQ if name.startswith('CQ') else NT_INJ
 
@@ -316,7 +343,7 @@ def make_settings(name, s, dt):
     r_f, r = radial_grid(geo)
 
     # Snapshot profiles (on the snapshot's surfaces, coordinate r_c) on the new grid
-    E      = on_grid(r, geo['r_c'], s['E_field'])
+    E      = on_grid(r, geo['r_c'], s['E_field']) * E_SCALE
     T_cold = on_grid(r, geo['r_c'], s['T_cold'])
     n_cold = on_grid(r, geo['r_c'], s['n_cold'])
     n_re   = on_grid(r, geo['r_c'], s['n_re'])
@@ -376,17 +403,40 @@ def make_settings(name, s, dt):
     # -----------------------------------------------------------------
     # Geometry: analytic toroidal, fitted to the snapshot equilibrium
     # -----------------------------------------------------------------
-    ds.radialgrid.setType(RadialGrid.TYPE_ANALYTIC_TOROIDAL)
-    ds.radialgrid.setMajorRadius(geo['R0'])
-    ds.radialgrid.setCustomGridPoints(r_f)
-    ds.radialgrid.setWallRadius(max(s['wall'], r_f[-1]))
-    ds.radialgrid.setNtheta(NTHETA)
-    ds.radialgrid.setShaping(
-        psi=geo['psi'], rpsi=geo['r_psi'],
-        GOverR0=geo['G'], rG=geo['r_G'],
-        Delta=geo['Delta'], rDelta=geo['r_f'],
-        delta=geo['delta'], rdelta=geo['r_f'],
-        kappa=geo['kappa'], rkappa=geo['r_f'])
+    B0 = float(np.mean(geo['G']))          # toroidal field on axis ~ G/R0
+    if GEOMETRY == 'cylinder':
+        ds.radialgrid.setType(RadialGrid.TYPE_CYLINDRICAL)
+        ds.radialgrid.setB0(B0)
+        ds.radialgrid.setCustomGridPoints(r_f)
+        ds.radialgrid.setWallRadius(max(s['wall'], r_f[-1]))
+    elif GEOMETRY == 'thin':
+        # cylindrical limit of the analytic model: same r grid, B -> B0
+        one = np.ones(geo['r_f'].size)
+        ds.radialgrid.setType(RadialGrid.TYPE_ANALYTIC_TOROIDAL)
+        # x 100: at x 1e3 B varies too little along theta and DREAM stops
+        # ("theta_B_max - theta_B_min != pi in an up-down-symmetric field")
+        ds.radialgrid.setMajorRadius(geo['R0'] * 100)
+        ds.radialgrid.setCustomGridPoints(r_f)
+        ds.radialgrid.setWallRadius(max(s['wall'], r_f[-1]))
+        ds.radialgrid.setNtheta(NTHETA)
+        ds.radialgrid.setShaping(
+            psi=geo['psi'], rpsi=geo['r_psi'],
+            GOverR0=B0 * np.ones(geo['r_G'].size), rG=geo['r_G'],
+            Delta=0 * one, rDelta=geo['r_f'],
+            delta=0 * one, rdelta=geo['r_f'],
+            kappa=one, rkappa=geo['r_f'])
+    else:
+        ds.radialgrid.setType(RadialGrid.TYPE_ANALYTIC_TOROIDAL)
+        ds.radialgrid.setMajorRadius(geo['R0'])
+        ds.radialgrid.setCustomGridPoints(r_f)
+        ds.radialgrid.setWallRadius(max(s['wall'], r_f[-1]))
+        ds.radialgrid.setNtheta(NTHETA)
+        ds.radialgrid.setShaping(
+            psi=geo['psi'], rpsi=geo['r_psi'],
+            GOverR0=geo['G'], rG=geo['r_G'],
+            Delta=geo['Delta'], rDelta=geo['r_f'],
+            delta=geo['delta'], rdelta=geo['r_f'],
+            kappa=geo['kappa'], rkappa=geo['r_f'])
 
     # -----------------------------------------------------------------
     # Radial transport
@@ -432,6 +482,8 @@ print(f'  hot grid  Np = {NP_HOT}  Nxi = {NXI_HOT}   dp = {P_RE/NP_HOT:.2e}')
 print(f'  RE grid   Np = {NP_RE}  Nxi = {NXI_RE}')
 print(f'  Nr = {NR or "snapshot"}   Ntheta = {NTHETA}')
 print(f'  dB/B = {DBB:.1e}   A_r = {AR_FACTOR:g} E(r)   advection {os.environ.get("ADV", "upwind")}')
+if variant_suffix():
+    print(f'  physics-check variant: GEOMETRY = {GEOMETRY}, E x {E_SCALE:g}  (suffix {variant_suffix()})')
 print('=' * 70)
 
 geometry_printed = False
@@ -456,7 +508,9 @@ for folder in folders:
         geometry_printed = True
 
     ds, r, n_re, T_cold = make_settings(name, s, dt)
-    TAG = f'toroidal_{name}_nr{r.size}_L{LEVEL}'
+    # _nt<N> only when the snapshot dt is split in N > 1 steps (NT_CQ / NT_INJ)
+    nt_tag = f'_nt{num_timesteps(name)}' if num_timesteps(name) != 1 else ''
+    TAG = f'toroidal_{name}_nr{r.size}{nt_tag}{variant_suffix()}_L{LEVEL}'
     ds.output.setFilename(f'output_{TAG}.h5')
     settings_file = os.path.join(OUT_DIR, f'dream_settings_{TAG}.h5')
     ds.save(settings_file)
