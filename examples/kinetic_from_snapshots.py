@@ -93,10 +93,13 @@ THETASEP       = 0.5
 NTHETASEP_FRAC = 0.75
 
 
+# Advection scheme of f_hot and f_re (ADV). Default upwind: QUICK is not
+# positivity-preserving and, with the thermal bulk unresolved (LEVEL <= 1),
+# leaves ~50% negative cells after one step on the CQ snapshots
 ADV_INTERP = {
     'upwind': DistFunc.AD_INTERP_UPWIND,
     'quick':  DistFunc.AD_INTERP_QUICK,
-}[os.environ.get('ADV', 'quick').lower()]
+}[os.environ.get('ADV', 'upwind').lower()]
 
 # Rechester-Rosenbluth dB/B; DBB=0 switches transport off.
 DBB = float(os.environ.get('DBB', 1e-4))

@@ -47,7 +47,7 @@
 #
 # Everything else (grids, transport, initial condition, solver) is as in
 # kinetic_from_snapshots.py, with the same environment variables:
-#   LEVEL (2), ADV (quick), DBB (1e-4), AR_FACTOR (10), RE_PT (10),
+#   LEVEL (2), ADV (upwind), DBB (1e-4), AR_FACTOR (10), RE_PT (10),
 #   RE_XIW (0.05), NT_CQ (1), NT_INJ (1), SNAPSHOT (all)
 # and, for the geometry,
 #   NR      radial cells (default: snapshot's)
@@ -114,10 +114,11 @@ BIUNIFORM_RE   = True
 THETASEP       = 0.5
 NTHETASEP_FRAC = 0.75
 
+# Default upwind: QUICK is not positivity-preserving (see kinetic_from_snapshots.py)
 ADV_INTERP = {
     'upwind': DistFunc.AD_INTERP_UPWIND,
     'quick':  DistFunc.AD_INTERP_QUICK,
-}[os.environ.get('ADV', 'quick').lower()]
+}[os.environ.get('ADV', 'upwind').lower()]
 
 DBB       = float(os.environ.get('DBB', 1e-4))       # Rechester-Rosenbluth dB/B (0: off)
 AR_FACTOR = float(os.environ.get('AR_FACTOR', 10.0)) # A_r(r) = AR_FACTOR * E(r) [m/s] (0: off)
@@ -430,7 +431,7 @@ print(f'Kinetic runs from DATASET snapshots, analytic toroidal geometry   [LEVEL
 print(f'  hot grid  Np = {NP_HOT}  Nxi = {NXI_HOT}   dp = {P_RE/NP_HOT:.2e}')
 print(f'  RE grid   Np = {NP_RE}  Nxi = {NXI_RE}')
 print(f'  Nr = {NR or "snapshot"}   Ntheta = {NTHETA}')
-print(f'  dB/B = {DBB:.1e}   A_r = {AR_FACTOR:g} E(r)   advection {os.environ.get("ADV", "quick")}')
+print(f'  dB/B = {DBB:.1e}   A_r = {AR_FACTOR:g} E(r)   advection {os.environ.get("ADV", "upwind")}')
 print('=' * 70)
 
 geometry_printed = False

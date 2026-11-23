@@ -49,7 +49,11 @@ SNAP_DIR = os.path.join(DATASET_DIR, 'snapshots')
 SNAPSHOTS = {
     'injection_t0': (INJECTION, 0),
     'injection_tf': (INJECTION, -1),
+    'CQ_t5ms':      (CQ, 50),    # before the avalanche: n_re ~ 6e7, E ~ 32 V/m
+    'CQ_t10ms':     (CQ, 100),   # avalanche starting: n_re ~ 1e9
+    'CQ_t20ms':     (CQ, 200),   # avalanche growth: n_re ~ 5e11
     'CQ_t29ms':     (CQ, 294),   # avalanche growth: n_re ~ 1e14, E ~ 31 V/m
+    'CQ_t40ms':     (CQ, 400),   # plateau forming: n_re ~ 3e16, E ~ 25 V/m
     'CQ_t49ms':     (CQ, 490),   # avalanche saturating: n_re ~ 5e16, E ~ 18 V/m
     'CQ_tf':        (CQ, -1),
 }
