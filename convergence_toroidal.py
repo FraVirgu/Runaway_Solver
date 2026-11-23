@@ -14,8 +14,12 @@ For every run it takes, at the last time, the moments
                LEVEL <= 2 (check_physics.py --equilibrium)
     N_re       total number of runaways, sum_r dr sum f V' dp dxi0
 
+both as the state at the last time and as the change since the first time,
 and compares them with the finest run of the same scan (largest Nr, or
-largest Nt): the profiles are interpolated linearly in r onto the radial
+largest Nt). The change is what measures the solver in the radial scan:
+every Nr starts from the snapshot profiles interpolated on its own grid,
+so the states already differ at t = 0 (the plot shows the change). The
+profiles are interpolated linearly in r onto the radial
 grid of the reference, and the error is the relative L2 norm
 ||x - x_ref|| / ||x_ref|| (relative difference for N_re). Between two
 consecutive runs of a scan the observed order is log2(e_k / e_k+1)
@@ -42,13 +46,19 @@ QUANTITIES = ["n_re", "j_re", "n_tail", "N_re"]
 
 
 def moments(path, ptail):
-    with h5py.File(path, "r") as h:
+    """
+    Moments at the last time ('state') and their change since the first
+    time ('change'). The change measures the dynamics alone: in the radial
+    scan every Nr starts from the snapshot profiles interpolated on its own
+    grid, so the states differ already at t = 0.
+    """
+    def at(h, k):
         g = h["grid"]
         r, dr, VpVol = g["r"][:], g["dr"][:], g["VpVol"][:]
         out = {"r": r}
 
         mg = g["runaway"]
-        f = np.asarray(h["eqsys/f_re"][-1], float)
+        f = np.asarray(h["eqsys/f_re"][k], float)
         p, xi = mg["p1"][:], mg["p2"][:]
         w = mg["Vprime"][:] * mg["dp2"][:][None, :, None] * mg["dp1"][:][None, None, :]
         v = (p / np.sqrt(1 + p ** 2))[None, None, :] * xi[None, :, None]
@@ -57,11 +67,18 @@ def moments(path, ptail):
         out["N_re"] = np.sum(np.sum(f * w, axis=(1, 2)) * dr)
 
         mg = g["hottail"]
-        f = np.asarray(h["eqsys/f_hot"][-1], float)
+        f = np.asarray(h["eqsys/f_hot"][k], float)
         p = mg["p1"][:]
         w = mg["Vprime"][:] * mg["dp2"][:][None, :, None] * mg["dp1"][:][None, None, :]
         out["n_tail"] = np.sum((f * w)[:, :, p > ptail], axis=(1, 2)) / VpVol
-    return out
+        return out
+
+    with h5py.File(path, "r") as h:
+        m0, m1 = at(h, 0), at(h, -1)
+    change = {"r": m1["r"]}
+    for q in QUANTITIES:
+        change[q] = m1[q] - m0[q]
+    return {"state": m1, "change": change}
 
 
 def error(m, ref, q):
@@ -89,14 +106,16 @@ def collect(outdir, ptail):
     return data
 
 
-def table(snap, scan, runs):
-    """Print the errors of one scan; returns (resolutions, {q: errors})."""
+def table(snap, scan, runs, kind):
+    """Print the errors of one scan ('state' or 'change'); returns (resolutions, {q: errors})."""
     idx = 0 if scan == "radial" else 1
     keys = sorted(runs, key=lambda k: k[idx])
+    runs = {k: runs[k][kind] for k in keys}
     ref = runs[keys[-1]]
     label = "Nr" if scan == "radial" else "Nt"
     fixed = f"Nt = {keys[0][1]}" if scan == "radial" else f"Nr = {keys[0][0]}"
-    print(f"\n=== {snap}  {scan} scan ({fixed}), reference {label} = {keys[-1][idx]}")
+    what = "state at the last time" if kind == "state" else "change last - first time"
+    print(f"\n=== {snap}  {scan} scan ({fixed}), {what}, reference {label} = {keys[-1][idx]}")
     print(f"  {label:>4}  " + "  ".join(f"{q:>10}" for q in QUANTITIES) + "     order (" + ", ".join(QUANTITIES) + ")")
     errs = {q: [error(runs[k], ref, q) for k in keys] for q in QUANTITIES}
     for i, k in enumerate(keys):
@@ -107,8 +126,7 @@ def table(snap, scan, runs):
                  for q in QUANTITIES]
             order = "     " + ", ".join(f"{x:4.2f}" for x in o)
         print(f"  {k[idx]:4d}  {row}{order}")
-    n_ref = ref["N_re"]
-    print(f"  N_re of the reference = {n_ref:.6e}")
+    print(f"  N_re of the reference = {ref['N_re']:.6e}")
     return [k[idx] for k in keys[:-1]], {q: e[:-1] for q, e in errs.items()}
 
 
@@ -175,7 +193,9 @@ def main():
         for scan in ("radial", "time"):
             runs = data[snap].get(scan, {})
             if len(runs) >= 2:
-                results.setdefault(snap, {})[scan] = table(snap, scan, runs)
+                table(snap, scan, runs, "state")
+                # the plot shows the change: free of the initial-data difference
+                results.setdefault(snap, {})[scan] = table(snap, scan, runs, "change")
             elif runs:
                 print(f"\n=== {snap}  {scan} scan: only one run, nothing to compare")
     if args.plot and results:
