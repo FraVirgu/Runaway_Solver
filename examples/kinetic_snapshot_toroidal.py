@@ -49,6 +49,10 @@
 # kinetic_from_snapshots.py, with the same environment variables:
 #   LEVEL (2), ADV (upwind), DBB (1e-4), AR_FACTOR (10), RE_PT (10),
 #   RE_XIW (0.05), NT_CQ (1), NT_INJ (1), SNAPSHOT (all)
+# except the momentum ranges, which follow V. Svensson's runs:
+#   P_RE    hot/runaway interface (default 2.5; f_hot on [0, P_RE])
+#   P_MAX   end of the runaway grid (default 300.5; f_re on [P_RE, P_MAX])
+#           (P_RE=1 P_MAX=60 gives the ranges of kinetic_from_snapshots.py)
 # and, for the geometry,
 #   NR      radial cells (default: snapshot's)
 #   NTHETA  poloidal points of the bounce averages (default 20, as the source)
@@ -98,8 +102,11 @@ mc2 = 510998.95             # electron rest energy [eV]
 # =====================================================================
 # Numerical parameters (as in kinetic_from_snapshots.py)
 # =====================================================================
-P_RE  = 1.0                 # hot/runaway grid interface
-P_MAX = 60.0
+# Momentum ranges [m_e c], as in V. Svensson's JOREK-DREAM runs (MSc thesis,
+# Sec. 4.1.2: "p_hot = 2.5, p_re = 300.5"): f_hot on [0, P_RE], f_re on
+# [P_RE, P_MAX]. The runs before 2026-11-23 used P_RE = 1, P_MAX = 60.
+P_RE  = float(os.environ.get('P_RE', 2.5))     # hot/runaway grid interface
+P_MAX = float(os.environ.get('P_MAX', 300.5))  # end of the runaway grid
 
 LEVEL = int(os.environ.get('LEVEL', 2))
 _f = 2 ** LEVEL
@@ -479,7 +486,8 @@ os.makedirs(OUT_DIR, exist_ok=True)
 print('=' * 70)
 print(f'Kinetic runs from DATASET snapshots, analytic toroidal geometry   [LEVEL = {LEVEL}]')
 print(f'  hot grid  Np = {NP_HOT}  Nxi = {NXI_HOT}   dp = {P_RE/NP_HOT:.2e}')
-print(f'  RE grid   Np = {NP_RE}  Nxi = {NXI_RE}')
+print(f'  RE grid   Np = {NP_RE}  Nxi = {NXI_RE}   dp = {(P_MAX-P_RE)/NP_RE:.2e}')
+print(f'  p ranges  f_hot [0, {P_RE:g}]   f_re [{P_RE:g}, {P_MAX:g}]')
 print(f'  Nr = {NR or "snapshot"}   Ntheta = {NTHETA}')
 print(f'  dB/B = {DBB:.1e}   A_r = {AR_FACTOR:g} E(r)   advection {os.environ.get("ADV", "upwind")}')
 if variant_suffix():

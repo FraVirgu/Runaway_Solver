@@ -39,6 +39,15 @@ add_executable(testkinetichypreradius
 target_link_libraries(testkinetichypreradius PUBLIC dream)
 set_target_properties(testkinetichypreradius PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
 
+# Serial comparison of kinetic solvers on a dumped system (e.g. a CQ
+# snapshot): BJ(radii)+[GMRES+AMG/Euclid(1)]+FGMRES, BJ+AMG+GMRES,
+# BJ+ILU+GMRES, AMG+GMRES, ILU+GMRES
+add_executable(testkineticsolversserial
+    "${PROJECT_SOURCE_DIR}/../Runaway_Solver/iface/TestKineticSolversSerial.cpp"
+)
+target_link_libraries(testkineticsolversserial PUBLIC dream)
+set_target_properties(testkineticsolversserial PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)
+
 # Collision quantities after their first rebuild, distributed over the
 # ranks by radius: saved in global order to compare serial and parallel runs
 add_executable(testcollisionquantity
