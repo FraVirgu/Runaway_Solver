@@ -48,7 +48,8 @@
 # Everything else (grids, transport, initial condition, solver) is as in
 # kinetic_from_snapshots.py, with the same environment variables:
 #   LEVEL (2), ADV (upwind), DBB (1e-4), AR_FACTOR (10), RE_PT (10),
-#   RE_XIW (0.05), NT_CQ (1), NT_INJ (1), SNAPSHOT (all)
+#   RE_XIW (0.05), DT_TARGET (1e-7), CQ_FULL_DT (0), NT_CQ (unset),
+#   NT_INJ (1), SNAPSHOT (all)
 # except the momentum ranges, which follow V. Svensson's runs:
 #   P_RE    hot/runaway interface (default 2.5; f_hot on [0, P_RE])
 #   P_MAX   end of the runaway grid (default 300.5; f_re on [P_RE, P_MAX])
@@ -132,7 +133,14 @@ AR_FACTOR = float(os.environ.get('AR_FACTOR', 10.0)) # A_r(r) = AR_FACTOR * E(r)
 RE_PT     = float(os.environ.get('RE_PT', 10.0))     # initial f_re: e-folding momentum
 RE_XIW    = float(os.environ.get('RE_XIW', 0.05))    # initial f_re: pitch width
 
-NT_CQ  = int(os.environ.get('NT_CQ', 1))
+# Time stepping, as kinetic_from_snapshots.py (see time_stepping()): CQ
+# snapshots take steps of ~DT_TARGET (default 1e-7 s, the DREAM substep of
+# V. Svensson's coupled runs) instead of the source dt (~1e-4 s), by default
+# only the first one (CQ_FULL_DT=1: the whole dt). NT_CQ, if given, keeps
+# the previous behaviour: the whole dt in NT_CQ steps.
+DT_TARGET  = float(os.environ.get('DT_TARGET', 1e-7))
+CQ_FULL_DT = os.environ.get('CQ_FULL_DT', '0') == '1'
+NT_CQ  = int(os.environ['NT_CQ']) if os.environ.get('NT_CQ') else None
 NT_INJ = int(os.environ.get('NT_INJ', 1))
 
 # Geometry
@@ -166,8 +174,20 @@ def variant_suffix():
         s += '_notransport'
     return s
 
-def num_timesteps(name):
-    return NT_CQ if name.startswith('CQ') else NT_INJ
+def time_stepping(name, dt):
+    """
+    (tmax, nt, file-name tag) of the run for snapshot `name`, whose source
+    time step is dt. The tag is '_dt<step>' for a single CQ substep,
+    '_nt<N>' for dt in N > 1 steps, empty for one step of dt.
+    """
+    if not name.startswith('CQ'):
+        return dt, NT_INJ, (f'_nt{NT_INJ}' if NT_INJ != 1 else '')
+    if NT_CQ is not None:
+        return dt, NT_CQ, (f'_nt{NT_CQ}' if NT_CQ != 1 else '')
+    n = max(1, int(np.ceil(dt / DT_TARGET)))
+    if CQ_FULL_DT or n == 1:
+        return dt, n, (f'_nt{n}' if n != 1 else '')
+    return dt / n, 1, f'_dt{dt / n:.0e}'
 
 
 p_re_init  = np.linspace(P_RE, P_MAX, 500)
@@ -460,7 +480,7 @@ def make_settings(name, s, dt):
         addRadialAdvection(ds.eqsys.f_re.transport, ar, r)
 
     # -----------------------------------------------------------------
-    # Solver: the snapshot dt, in num_timesteps(name) steps
+    # Solver; time stepping from time_stepping()
     # -----------------------------------------------------------------
     ds.solver.setType(Solver.LINEAR_IMPLICIT)
     ds.solver.preconditioner.setEnabled(False)
@@ -468,8 +488,9 @@ def make_settings(name, s, dt):
 
     ds.other.include('fluid', 'nu_s', 'nu_D')
 
-    ds.timestep.setTmax(dt)
-    ds.timestep.setNt(num_timesteps(name))
+    tmax, nt, _ = time_stepping(name, dt)
+    ds.timestep.setTmax(tmax)
+    ds.timestep.setNt(nt)
 
     ds.output.setTiming(stdout=True, file=True)
     return ds, r, n_re, T_cold
@@ -516,16 +537,15 @@ for folder in folders:
         geometry_printed = True
 
     ds, r, n_re, T_cold = make_settings(name, s, dt)
-    # _nt<N> only when the snapshot dt is split in N > 1 steps (NT_CQ / NT_INJ)
-    nt_tag = f'_nt{num_timesteps(name)}' if num_timesteps(name) != 1 else ''
+    # _nt<N>: the snapshot dt in N > 1 steps; _dt<step>: one CQ substep
+    tmax, nt, nt_tag = time_stepping(name, dt)
     TAG = f'toroidal_{name}_nr{r.size}{nt_tag}{variant_suffix()}_L{LEVEL}'
     ds.output.setFilename(f'output_{TAG}.h5')
     settings_file = os.path.join(OUT_DIR, f'dream_settings_{TAG}.h5')
     ds.save(settings_file)
 
     p_th = np.sqrt(2 * T_cold.min() / mc2)
-    nt = num_timesteps(name)
-    print(f'{name}:  Nr = {r.size}   dt = {dt:.4e} s in {nt} step(s)   '
+    print(f'{name}:  Nr = {r.size}   source dt = {dt:.4e} s; run: {nt} step(s) of {tmax/nt:.4e} s   '
           f'T_cold = {T_cold.min():.3g}-{T_cold.max():.3g} eV   n_re max = {n_re.max():.3e} m^-3')
     if P_RE / NP_HOT > p_th / 5:
         print(f'    WARNING: p_th = {p_th:.2e} at the coldest radius is not resolved by dp = {P_RE/NP_HOT:.2e}; '

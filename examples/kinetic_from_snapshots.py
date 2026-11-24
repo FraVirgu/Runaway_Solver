@@ -11,7 +11,8 @@
 #   E_field(r), T_cold(r), n_cold(r), n_i(Z0, r)    prescribed, from state.h5
 #
 # Injection snapshots take dt in NT_INJ (default 1) step; current-quench
-# snapshots (CQ_*) in NT_CQ (default 1) steps of dt/NT_CQ.
+# snapshots (CQ_*) take steps of ~DT_TARGET = 1e-7 s, as V. Svensson's
+# coupled runs, by default only the first of them (see DT_TARGET below).
 #
 # The numerics are those of diff_grid_paper_kinetic_radial.py: two kinetic
 # grids of different resolution, Rechester-Rosenbluth transport plus radial
@@ -111,11 +112,23 @@ AR_FACTOR = float(os.environ.get('AR_FACTOR', 10.0))
 RE_PT  = float(os.environ.get('RE_PT', 10.0))
 RE_XIW = float(os.environ.get('RE_XIW', 0.05))
 
-# Number of time steps per run. The current-quench snapshots (CQ_*) use the
-# source simulation's dt (~1e-4 s), split into NT_CQ steps of dt/NT_CQ;
-# injection: NT_INJ. Default 1 for both: one linear system per snapshot
-# (memory/speed-up tests). For an accurate CQ evolution raise NT_CQ (e.g. 20).
-NT_CQ  = int(os.environ.get('NT_CQ', 1))
+# Time stepping (see time_stepping()). The source simulation's dt at a
+# current-quench snapshot (CQ_*) is ~1e-4 s, ~1000 times the step DREAM takes
+# in V. Svensson's coupled runs, where each coupling step dt is split into
+# N = max(1, ceil(dt / DT_TARGET)) substeps with DT_TARGET = 1e-7 s. The CQ
+# snapshots follow the same rule:
+#   DT_TARGET   target CQ step [s] (default 1e-7)
+#   CQ_FULL_DT  0 (default): only the FIRST substep, one step of dt/N (the
+#               linear system of the solver tests, without N solves and N
+#               matrix dumps); 1: the whole dt in N steps
+#   NT_CQ       if given, the previous behaviour instead: the whole dt in
+#               NT_CQ steps (NT_CQ=1: one step of the source dt), DT_TARGET
+#               and CQ_FULL_DT ignored
+# Injection snapshots (dt ~ 1.8e-7 s, already of that order) take dt in
+# NT_INJ (default 1) steps.
+DT_TARGET  = float(os.environ.get('DT_TARGET', 1e-7))
+CQ_FULL_DT = os.environ.get('CQ_FULL_DT', '0') == '1'
+NT_CQ  = int(os.environ['NT_CQ']) if os.environ.get('NT_CQ') else None
 NT_INJ = int(os.environ.get('NT_INJ', 1))
 
 # FULL=1: settings for the full DREAM system (fluid unknowns evolved too,
@@ -141,8 +154,20 @@ if NR is not None and FULL:
     sys.exit('NR is for the kinetic-only runs (FULL=0).')
 
 
-def num_timesteps(name):
-    return NT_CQ if name.startswith('CQ') else NT_INJ
+def time_stepping(name, dt):
+    """
+    (tmax, nt, file-name tag) of the run for snapshot `name`, whose source
+    time step is dt. The tag is '_dt<step>' for a single CQ substep,
+    '_nt<N>' for dt in N > 1 steps, empty for one step of dt.
+    """
+    if not name.startswith('CQ'):
+        return dt, NT_INJ, (f'_nt{NT_INJ}' if NT_INJ != 1 else '')
+    if NT_CQ is not None:
+        return dt, NT_CQ, (f'_nt{NT_CQ}' if NT_CQ != 1 else '')
+    n = max(1, int(np.ceil(dt / DT_TARGET)))
+    if CQ_FULL_DT or n == 1:
+        return dt, n, (f'_nt{n}' if n != 1 else '')
+    return dt / n, 1, f'_dt{dt / n:.0e}'
 
 
 p_re_init  = np.linspace(P_RE, P_MAX, 500)
@@ -297,7 +322,7 @@ def make_settings(name, s, dt):
         addRadialAdvection(ds.eqsys.f_re.transport, ar, r)
 
     # -----------------------------------------------------------------
-    # Solver: the snapshot dt, in num_timesteps(name) steps
+    # Solver; time stepping from time_stepping()
     # -----------------------------------------------------------------
     ds.solver.setType(Solver.LINEAR_IMPLICIT)
     ds.solver.preconditioner.setEnabled(False)
@@ -320,8 +345,9 @@ def make_settings(name, s, dt):
     # distributed collision quantities) do not depend on this.
     ds.other.include('fluid')
 
-    ds.timestep.setTmax(dt)
-    ds.timestep.setNt(num_timesteps(name))
+    tmax, nt, _ = time_stepping(name, dt)
+    ds.timestep.setTmax(tmax)
+    ds.timestep.setNt(nt)
 
     ds.output.setTiming(stdout=True, file=True)
     return ds
@@ -350,7 +376,8 @@ for folder in folders:
     dt = snapshot_dt(name)
 
     ds = make_settings(name, s, dt)
-    snap_tag = f'{name}_nr{NR}' if NR is not None else name
+    tmax, nt, dt_tag = time_stepping(name, dt)
+    snap_tag = (f'{name}_nr{NR}' if NR is not None else name) + dt_tag
     TAG = f'{("fullnl" if NONLINEAR else "full") + ("_nosp" if NO_SP else "") if FULL else "kinetic"}_{snap_tag}_L{LEVEL}'
     ds.output.setFilename(f'output_{TAG}.h5')
     settings_file = os.path.join(OUT_DIR, f'dream_settings_{TAG}.h5')
@@ -358,8 +385,7 @@ for folder in folders:
 
     # The thermal bulk is resolved on the hot grid only if dp << p_th
     p_th = np.sqrt(2 * s['T_cold'].min() / mc2)
-    nt = num_timesteps(name)
-    print(f'{name}:  dt = {dt:.4e} s in {nt} step(s) of {dt/nt:.4e} s   T_cold = {s["T_cold"].min():.3g}-{s["T_cold"].max():.3g} eV   '
+    print(f'{name}:  source dt = {dt:.4e} s; run: {nt} step(s) of {tmax/nt:.4e} s   T_cold = {s["T_cold"].min():.3g}-{s["T_cold"].max():.3g} eV   '
           f'n_re max = {s["n_re"].max():.3e} m^-3')
     if P_RE / NP_HOT > p_th / 5:
         print(f'    WARNING: p_th = {p_th:.2e} at the coldest radius is not resolved by dp = {P_RE/NP_HOT:.2e}; '
@@ -371,7 +397,7 @@ for folder in folders:
     print(f'    Wrote {settings_file}')
 
 with open(os.path.join(OUT_DIR, 'petsc_num_timesteps.txt'), 'w') as fh:
-    fh.write(f'{max(num_timesteps(os.path.basename(f)) for f in folders)}\n')
+    fh.write(f'{max(time_stepping(os.path.basename(f), snapshot_dt(os.path.basename(f)))[1] for f in folders)}\n')
 
 print()
 print(f'Run:  cd {OUT_DIR} && ./dreami dream_settings_kinetic_<snapshot>{f"_nr{NR}" if NR is not None else ""}_L{LEVEL}.h5')
