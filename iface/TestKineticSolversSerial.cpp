@@ -28,6 +28,14 @@
  *            one BoomerAMG V-cycle on the whole kinetic block, outer GMRES.
  *   ilu      ILU + GMRES                                      prefix ilu_
  *            ILU(0) on the whole kinetic block, outer GMRES.
+ *   lu       LU (direct)                                      prefix lu_
+ *            PETSc's serial LU factorization of the whole kinetic block
+ *            (KSPPREONLY + PCLU, nested-dissection ordering); "setup" is
+ *            the factorization, "solve" the triangular solves. Another
+ *            package with -lu_pc_factor_mat_solver_type mumps|superlu.
+ *
+ * With one radial cell (Nr = 1) the BJ variants are the global ones (one
+ * block): compare with -solvers lu,amg,ilu.
  *
  * Anything can be overridden on the command line under the prefix, e.g.
  *   -ilu_pc_factor_levels 1
@@ -50,7 +58,7 @@
  *   -nr <Nr>               number of radial cells, if petsc_block_sizes.txt
  *                          has no "Nr" line (older dumps)
  *   -solvers a,b,...       subset to run, in order (default
- *                          bjamgeu,bjamg,bjilu,amg,ilu)
+ *                          bjamgeu,bjamg,bjilu,amg,ilu,lu)
  *   -maxits <n>            outer iteration limit (default 1000)
  *   -inner_rtol <tol>      inner GMRES tolerance of bjamgeu (default 1e-6)
  *
@@ -94,7 +102,8 @@ enum class Kind
     BJ_AMG,              // BJ(radii) + AMG V-cycle + GMRES
     BJ_ILU,              // BJ(radii) + ILU + GMRES
     AMG,                 // AMG + GMRES
-    ILU                  // ILU + GMRES
+    ILU,                 // ILU + GMRES
+    LU                   // direct LU
 };
 
 struct Variant
@@ -111,6 +120,7 @@ static const Variant variants[] = {
     {"bjilu", "bjilu_", "BJ(r) + ILU + GMRES", Kind::BJ_ILU},
     {"amg", "amg_", "AMG + GMRES", Kind::AMG},
     {"ilu", "ilu_", "ILU + GMRES", Kind::ILU},
+    {"lu", "lu_", "LU (direct)", Kind::LU},
 };
 
 static bool IsBJ(Kind k)
@@ -198,14 +208,23 @@ static void RunVariant(const Variant &v, const System &s, PetscInt maxits,
     KSPCreate(PETSC_COMM_WORLD, &ksp);
     KSPSetOptionsPrefix(ksp, v.prefix);
     KSPSetOperators(ksp, A, A);
-    KSPSetType(ksp, fgmres ? KSPFGMRES : KSPGMRES);
-    KSPGMRESSetRestart(ksp, 100);
-    KSPSetTolerances(ksp, 1e-10, PETSC_DEFAULT, PETSC_DEFAULT, maxits);
     KSPSetInitialGuessNonzero(ksp, PETSC_FALSE);
-    // Right preconditioning everywhere, so that every variant stops on the
-    // same (true, unpreconditioned) residual.
-    KSPSetPCSide(ksp, PC_RIGHT);
-    KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
+    if (v.kind == Kind::LU)
+    {
+        // one application of the factorization, no residual norm
+        KSPSetType(ksp, KSPPREONLY);
+        KSPSetNormType(ksp, KSP_NORM_NONE);
+    }
+    else
+    {
+        KSPSetType(ksp, fgmres ? KSPFGMRES : KSPGMRES);
+        KSPGMRESSetRestart(ksp, 100);
+        KSPSetTolerances(ksp, 1e-10, PETSC_DEFAULT, PETSC_DEFAULT, maxits);
+        // Right preconditioning everywhere, so that every variant stops on
+        // the same (true, unpreconditioned) residual.
+        KSPSetPCSide(ksp, PC_RIGHT);
+        KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
+    }
 
     KSPGetPC(ksp, &pc);
     switch (v.kind)
@@ -225,6 +244,9 @@ static void RunVariant(const Variant &v, const System &s, PetscInt maxits,
         break;
     case Kind::ILU:
         PCSetType(pc, PCILU);
+        break;
+    case Kind::LU:
+        PCSetType(pc, PCLU);
         break;
     }
     KSPSetFromOptions(ksp);
@@ -390,7 +412,7 @@ int main(int argc, char *argv[])
                 if (!found)
                 {
                     cerr << "Unknown solver '" << names[i]
-                         << "' in -solvers (bjamgeu|bjamg|bjilu|amg|ilu)." << endl;
+                         << "' in -solvers (bjamgeu|bjamg|bjilu|amg|ilu|lu)." << endl;
                     MPI_Abort(MPI_COMM_WORLD, 1);
                 }
                 toRun.push_back(found);
