@@ -3,14 +3,13 @@
 #SBATCH --output=cmp_nr1_%j.out
 #SBATCH --error=cmp_nr1_%j.err
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=256         # reserve every core as a task slot
+#SBATCH --ntasks-per-node=9           # one serial run per snapshot (PARALLEL=1)
 #SBATCH --cpus-per-task=1
 #SBATCH --time=0-06:00:00
 #SBATCH --account=FUPA2_REDISMHD
 #SBATCH --partition=dcgp_fua_prod
 #SBATCH --qos=normal
-#SBATCH --mem=0
-#SBATCH --exclusive
+#SBATCH --mem=64G                     # shared node: everything here is serial
 #
 # Cluster version of run_compare_solvers_nr1.sh: serial comparison of
 # LU (direct) vs AMG + GMRES vs ILU + GMRES on the kinetic system
