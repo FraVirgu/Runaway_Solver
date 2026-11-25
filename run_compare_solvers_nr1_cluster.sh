@@ -28,12 +28,13 @@
 # Build testkineticsolversserial first (make testkineticsolversserial in
 # $DREAM_ROOT/build). Submit from the Runaway_Solver folder with
 #
-#   $ sbatch run_compare_solvers_nr1_cluster.sh                 # LEVEL 2, all snapshots
-#   $ LEVEL=3 sbatch run_compare_solvers_nr1_cluster.sh
+#   $ sbatch run_compare_solvers_nr1_cluster.sh                 # LEVEL 1, all snapshots
+#   $ LEVEL=2 sbatch run_compare_solvers_nr1_cluster.sh
 #   $ SNAPSHOTS="CQ_t29ms CQ_tf" sbatch run_compare_solvers_nr1_cluster.sh
 #   $ PARALLEL=1 sbatch run_compare_solvers_nr1_cluster.sh      # all snapshots at once
 #   $ SKIP_DUMP=1 SOLVERS=lu,amg,ilu,bjamgeu sbatch run_compare_solvers_nr1_cluster.sh
-#   $ EXTRA="-lu_pc_factor_mat_solver_type mumps" sbatch run_compare_solvers_nr1_cluster.sh
+#   $ EXTRA="-lu_pc_factor_mat_solver_type petsc" sbatch run_compare_solvers_nr1_cluster.sh
+#     (the LU uses MUMPS by default when PETSc has it)
 #
 # Environment for the settings (passed to kinetic_snapshot_toroidal.py):
 # NT_CQ, CQ_FULL_DT, DT_TARGET, ADV, ... (default: CQ = one step of ~1e-7 s).
@@ -59,7 +60,7 @@ export OMP_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export MKL_DYNAMIC=FALSE
 
-LEVEL=${LEVEL:-2}
+LEVEL=${LEVEL:-1}
 SOLVERS=${SOLVERS:-lu,amg,ilu}
 SKIP_DUMP=${SKIP_DUMP:-0}
 PARALLEL=${PARALLEL:-0}

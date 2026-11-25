@@ -29,10 +29,11 @@
  *   ilu      ILU + GMRES                                      prefix ilu_
  *            ILU(0) on the whole kinetic block, outer GMRES.
  *   lu       LU (direct)                                      prefix lu_
- *            PETSc's serial LU factorization of the whole kinetic block
- *            (KSPPREONLY + PCLU, nested-dissection ordering); "setup" is
- *            the factorization, "solve" the triangular solves. Another
- *            package with -lu_pc_factor_mat_solver_type mumps|superlu.
+ *            serial LU factorization of the whole kinetic block
+ *            (KSPPREONLY + PCLU) with MUMPS if PETSc has it, else PETSc's
+ *            own; "setup" is the factorization, "solve" the triangular
+ *            solves. Another package with
+ *            -lu_pc_factor_mat_solver_type petsc|superlu|umfpack.
  *
  * With one radial cell (Nr = 1) the BJ variants are the global ones (one
  * block): compare with -solvers lu,amg,ilu.
@@ -246,8 +247,16 @@ static void RunVariant(const Variant &v, const System &s, PetscInt maxits,
         PCSetType(pc, PCILU);
         break;
     case Kind::LU:
+    {
+        // MUMPS if this PETSc has it (PETSc's own LU is much slower on
+        // these systems); -lu_pc_factor_mat_solver_type overrides it.
         PCSetType(pc, PCLU);
+        PetscBool hasMumps = PETSC_FALSE;
+        PetscHasExternalPackage("mumps", &hasMumps);
+        if (hasMumps)
+            PCFactorSetMatSolverType(pc, MATSOLVERMUMPS);
         break;
+    }
     }
     KSPSetFromOptions(ksp);
 
@@ -317,7 +326,14 @@ static void RunVariant(const Variant &v, const System &s, PetscInt maxits,
     else
         VecCopy(y, x);
 
-    Report(s, x, v.label, its, reason, tSetup, tSolve);
+    string label = v.label;
+    if (v.kind == Kind::LU)
+    {
+        MatSolverType st;
+        PCFactorGetMatSolverType(pc, &st);
+        label = string("LU (direct, ") + (st ? st : "petsc") + ")";
+    }
+    Report(s, x, label.c_str(), its, reason, tSetup, tSolve);
 
     if (v.kind == Kind::BJ_AMG_EUCLID_INNER)
     {
