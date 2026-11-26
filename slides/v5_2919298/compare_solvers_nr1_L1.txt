@@ -1,0 +1,88 @@
+# Pitagora job 2919298 (26 Nov 2026): run_compare_solvers_nr1_cluster.sh
+#   SOLVERS=lu,amg,ilu,bjamgeu,bjamg,bjilu, LEVEL=1, Nr=1, toroidal geometry
+#   settings: NR=1 LEVEL=1 examples/kinetic_snapshot_toroidal.py
+#   (CQ snapshots: one step of ~1e-7 s; injection: the source step 1.8e-7 s)
+#   dreami -dream_kinetic_only -dream_scale diag -dream_save_system, then
+#   iface/TestKineticSolversSerial.cpp on the dumped step-1 system (serial)
+Nr = 1, LEVEL = 1, solvers lu,amg,ilu,bjamgeu,bjamg,bjilu     (job 2919298)
+=== CQ_t10ms   (dream_settings_toroidal_CQ_t10ms_nr1_dt1e-07_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     2  converged setup    0.053 s  solve    0.021 s  total    0.074 s  res 3.69e-13  err 1.55e-13
+                                           inner GMRES iterations: 6 total, 6 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     8  converged setup    0.005 s  solve    0.276 s  total    0.281 s  res 2.56e-12  err 5.73e-12
+BJ(r) + ILU + GMRES                      its    10  converged setup    0.029 s  solve    0.015 s  total    0.044 s  res 1.48e-11  err 1.05e-11
+AMG + GMRES                              its     8  converged setup    0.005 s  solve    0.030 s  total    0.036 s  res 2.56e-12  err 5.73e-12
+ILU + GMRES                              its    10  converged setup    0.002 s  solve    0.014 s  total    0.015 s  res 1.48e-11  err 1.05e-11
+LU (direct, petsc)                       its     1  converged setup    0.173 s  solve    0.001 s  total    0.174 s  res 6.47e-13  err 2.78e-13
+=== CQ_t20ms   (dream_settings_toroidal_CQ_t20ms_nr1_dt1e-07_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     2  converged setup    0.054 s  solve    0.021 s  total    0.075 s  res 4.18e-13  err 8.89e-14
+                                           inner GMRES iterations: 6 total, 6 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     8  converged setup    0.005 s  solve    0.031 s  total    0.037 s  res 1.59e-12  err 6.05e-13
+BJ(r) + ILU + GMRES                      its    10  converged setup    0.002 s  solve    0.014 s  total    0.016 s  res 1.10e-11  err 5.23e-12
+AMG + GMRES                              its     8  converged setup    0.005 s  solve    0.031 s  total    0.036 s  res 1.59e-12  err 6.05e-13
+ILU + GMRES                              its    10  converged setup    0.002 s  solve    0.014 s  total    0.015 s  res 1.10e-11  err 5.23e-12
+LU (direct, petsc)                       its     1  converged setup    0.131 s  solve    0.001 s  total    0.132 s  res 5.99e-13  err 3.94e-14
+=== CQ_t29ms   (dream_settings_toroidal_CQ_t29ms_nr1_dt1e-07_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     2  converged setup    0.055 s  solve    0.021 s  total    0.076 s  res 4.51e-13  err 1.45e-13
+                                           inner GMRES iterations: 6 total, 6 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     7  converged setup    0.006 s  solve    0.028 s  total    0.034 s  res 1.34e-11  err 8.17e-11
+BJ(r) + ILU + GMRES                      its     9  converged setup    0.002 s  solve    0.013 s  total    0.015 s  res 9.65e-11  err 9.48e-12
+AMG + GMRES                              its     7  converged setup    0.005 s  solve    0.028 s  total    0.033 s  res 1.34e-11  err 8.17e-11
+ILU + GMRES                              its     9  converged setup    0.002 s  solve    0.013 s  total    0.014 s  res 9.65e-11  err 9.48e-12
+LU (direct, petsc)                       its     1  converged setup    0.129 s  solve    0.001 s  total    0.131 s  res 4.58e-13  err 2.92e-13
+=== CQ_t40ms   (dream_settings_toroidal_CQ_t40ms_nr1_dt1e-07_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     2  converged setup    0.053 s  solve    0.021 s  total    0.074 s  res 5.03e-13  err 9.72e-14
+                                           inner GMRES iterations: 6 total, 6 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     7  converged setup    0.005 s  solve    0.028 s  total    0.033 s  res 9.89e-12  err 5.87e-11
+BJ(r) + ILU + GMRES                      its     9  converged setup    0.002 s  solve    0.013 s  total    0.015 s  res 5.13e-11  err 4.79e-12
+AMG + GMRES                              its     7  converged setup    0.005 s  solve    0.027 s  total    0.033 s  res 9.89e-12  err 5.87e-11
+ILU + GMRES                              its     9  converged setup    0.002 s  solve    0.013 s  total    0.014 s  res 5.13e-11  err 4.79e-12
+LU (direct, petsc)                       its     1  converged setup    0.130 s  solve    0.001 s  total    0.131 s  res 4.62e-13  err 1.43e-13
+=== CQ_t49ms   (dream_settings_toroidal_CQ_t49ms_nr1_dt1e-07_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     1  converged setup    0.053 s  solve    0.012 s  total    0.065 s  res 5.63e-11  err 3.23e-11
+                                           inner GMRES iterations: 3 total, 3 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     7  converged setup    0.005 s  solve    0.028 s  total    0.033 s  res 5.80e-11  err 1.51e-10
+BJ(r) + ILU + GMRES                      its     9  converged setup    0.002 s  solve    0.013 s  total    0.015 s  res 2.09e-12  err 1.83e-12
+AMG + GMRES                              its     7  converged setup    0.005 s  solve    0.027 s  total    0.033 s  res 5.80e-11  err 1.51e-10
+ILU + GMRES                              its     9  converged setup    0.002 s  solve    0.013 s  total    0.014 s  res 2.09e-12  err 1.83e-12
+LU (direct, petsc)                       its     1  converged setup    0.129 s  solve    0.001 s  total    0.130 s  res 8.21e-13  err 2.40e-13
+=== CQ_t5ms   (dream_settings_toroidal_CQ_t5ms_nr1_dt1e-07_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     2  converged setup    0.054 s  solve    0.022 s  total    0.076 s  res 5.05e-13  err 5.65e-15
+                                           inner GMRES iterations: 6 total, 6 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     8  converged setup    0.005 s  solve    0.031 s  total    0.037 s  res 9.75e-12  err 7.12e-12
+BJ(r) + ILU + GMRES                      its    10  converged setup    0.003 s  solve    0.014 s  total    0.017 s  res 1.67e-11  err 1.40e-11
+AMG + GMRES                              its     8  converged setup    0.005 s  solve    0.031 s  total    0.036 s  res 9.75e-12  err 7.12e-12
+ILU + GMRES                              its    10  converged setup    0.002 s  solve    0.014 s  total    0.016 s  res 1.67e-11  err 1.40e-11
+LU (direct, petsc)                       its     1  converged setup    0.131 s  solve    0.001 s  total    0.132 s  res 7.07e-13  err 1.30e-13
+=== CQ_tf   (dream_settings_toroidal_CQ_tf_nr1_dt1e-07_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     2  converged setup    0.054 s  solve    0.016 s  total    0.070 s  res 4.74e-13  err 9.58e-13
+                                           inner GMRES iterations: 4 total, 4 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     8  converged setup    0.005 s  solve    0.031 s  total    0.036 s  res 1.74e-11  err 1.75e-11
+BJ(r) + ILU + GMRES                      its     8  converged setup    0.002 s  solve    0.012 s  total    0.014 s  res 5.30e-11  err 1.56e-11
+AMG + GMRES                              its     8  converged setup    0.005 s  solve    0.031 s  total    0.036 s  res 1.74e-11  err 1.75e-11
+ILU + GMRES                              its     8  converged setup    0.002 s  solve    0.012 s  total    0.013 s  res 5.30e-11  err 1.56e-11
+LU (direct, petsc)                       its     1  converged setup    0.127 s  solve    0.001 s  total    0.129 s  res 6.75e-13  err 1.18e-12
+=== injection_t0   (dream_settings_toroidal_injection_t0_nr1_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     2  converged setup    0.052 s  solve    0.020 s  total    0.072 s  res 1.70e-13  err 2.06e-14
+                                           inner GMRES iterations: 6 total, 6 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     7  converged setup    0.005 s  solve    0.027 s  total    0.032 s  res 2.47e-11  err 7.49e-12
+BJ(r) + ILU + GMRES                      its     9  converged setup    0.002 s  solve    0.013 s  total    0.015 s  res 1.76e-11  err 7.73e-12
+AMG + GMRES                              its     7  converged setup    0.005 s  solve    0.027 s  total    0.032 s  res 2.47e-11  err 7.49e-12
+ILU + GMRES                              its     9  converged setup    0.002 s  solve    0.013 s  total    0.015 s  res 1.76e-11  err 7.73e-12
+LU (direct, petsc)                       its     1  converged setup    0.122 s  solve    0.001 s  total    0.123 s  res 1.53e-13  err 3.52e-14
+=== injection_tf   (dream_settings_toroidal_injection_tf_nr1_L1.h5)
+Matrix petsc_mat_np1_step1_iter1: full system 38000 x 38000, kinetic block 38000 x 38000 (Nhot 8000, Nre 30000), nnz 179993
+BJ(r) + [GMRES+AMG/Euclid(1)] + FGMRES   its     2  converged setup    0.055 s  solve    0.020 s  total    0.075 s  res 1.52e-12  err 1.37e-13
+                                           inner GMRES iterations: 6 total, 6 on the worst radius (rtol 1.0e-06)
+BJ(r) + AMG + GMRES                      its     9  converged setup    0.005 s  solve    0.034 s  total    0.039 s  res 6.16e-12  err 6.08e-12
+BJ(r) + ILU + GMRES                      its    12  converged setup    0.002 s  solve    0.017 s  total    0.019 s  res 3.89e-11  err 9.65e-12
+AMG + GMRES                              its     9  converged setup    0.005 s  solve    0.034 s  total    0.039 s  res 6.16e-12  err 6.08e-12
+ILU + GMRES                              its    12  converged setup    0.002 s  solve    0.016 s  total    0.018 s  res 3.89e-11  err 9.65e-12
+LU (direct, petsc)                       its     1  converged setup    0.131 s  solve    0.001 s  total    0.132 s  res 1.92e-12  err 1.02e-13
