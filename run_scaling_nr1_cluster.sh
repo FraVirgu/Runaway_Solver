@@ -12,9 +12,12 @@
 #SBATCH --mem=0
 #SBATCH --exclusive                   # clean timings, no other jobs on the node
 #
-# Strong scaling, ONE radial cell (Nr = 1): the single radius block is split
-# over all n MPI ranks (n = 1 ... 64) and solved by testkinetichypreradius
-# (iface/TestKineticHypreRadius.cpp), which runs two variants:
+# Strong scaling of testkinetichypreradius (iface/TestKineticHypreRadius.cpp)
+# on the systems with NR radial cells (default 1):
+#   NR = 1   the single radius block is split over all n ranks (n = 1 ... 64)
+#   NR > 1   block Jacobi over the radius, whole radii per rank: n = the
+#            divisors of NR up to 64 by default (NR = 44: 1 2 4 11 22 44)
+# The test runs two variants:
 #   a. GMRES + one BoomerAMG V-cycle                    ("AMG + GMRES")
 #   b. FGMRES + [inner GMRES (rtol 1e-6) + BoomerAMG]   (MIRadialBJ)
 # Every (system, n) is run with two BoomerAMG smoothers:
@@ -22,10 +25,15 @@
 #   euclid    Euclid ILU(1)                             ("AMG/Euclid + GMRES")
 # so each run gives 4 lines: {AMG, AMG/Euclid} x {GMRES, [GMRES]+FGMRES}.
 #
-# The systems are the ones dumped by run_compare_solvers_nr1_cluster.sh:
-#   $DATADIR/sys_toroidal_<snapshot>_nr1_L<LEVEL>/
+# The systems are the ones dumped by run_compare_solvers_nr1_cluster.sh
+# (same NR and LEVEL):
+#   $DATADIR/sys_toroidal_<snapshot>_nr<NR>_L<LEVEL>/
 #     petsc_mat_np1_step1_iter1, petsc_rhs_np1_step1_iter1,
 #     petsc_solution_np1_step1_iter1, petsc_block_sizes.txt
+#
+# SCALE (default diag): the test's -scale option. diag is what the earlier
+# runs used; with NR = 1 the default smoother failed on 1-4 ranks with it,
+# so SCALE=none is the check to do.
 #
 # Results: $OUTDIR/timings.csv, one row per (system, n, smoother, run,
 # solver), and one log per run in $OUTDIR/<system>/.
@@ -35,6 +43,8 @@
 #   $ sbatch run_scaling_nr1_cluster.sh                          # L2, all snapshots
 #   $ SNAPSHOTS="CQ_t49ms CQ_tf" sbatch run_scaling_nr1_cluster.sh
 #   $ LEVEL=1 NPROCS="1 2 4 8" REPEATS=3 sbatch run_scaling_nr1_cluster.sh
+#   $ NR=44 sbatch --time=12:00:00 run_scaling_nr1_cluster.sh    # 44 radii, n = 1 2 4 11 22 44
+#   $ SCALE=none sbatch run_scaling_nr1_cluster.sh
 
 PETSC_MODULE=${PETSC_MODULE:-petsc/3.25.2-intelMPI-intel-hypre}
 
@@ -54,20 +64,28 @@ export MKL_NUM_THREADS=1
 export MKL_DYNAMIC=FALSE
 
 LEVEL=${LEVEL:-2}
-NPROCS=${NPROCS:-"1 2 4 8 16 32 64"}
+NR=${NR:-1}
+SCALE=${SCALE:-diag}
+if [ -z "$NPROCS" ]; then
+    if (( NR == 1 )); then
+        NPROCS="1 2 4 8 16 32 64"
+    else
+        for n in $(seq 1 64); do (( NR % n == 0 )) && NPROCS="$NPROCS $n"; done
+    fi
+fi
 REPEATS=${REPEATS:-2}
 SMOOTHERS=${SMOOTHERS:-"default euclid"}
 
 DREAM_ROOT=${DREAM_ROOT:-$HOME/DREAM}
 EXE=$DREAM_ROOT/build/iface/testkinetichypreradius
 DATADIR=${DATADIR:-$DREAM_ROOT/build/iface}
-OUTDIR=$DATADIR/scaling_nr1_L${LEVEL}_${SLURM_JOB_ID:-local}
+OUTDIR=$DATADIR/scaling_nr${NR}_L${LEVEL}_${SCALE}_${SLURM_JOB_ID:-local}
 mkdir -p $OUTDIR
 
 MATFILE=petsc_mat_np1_step1_iter1
 RHSFILE=petsc_rhs_np1_step1_iter1
 REFFILE=petsc_solution_np1_step1_iter1
-BASE_OPTIONS="-scale diag -mat $MATFILE -rhs $RHSFILE -ref_solution $REFFILE"
+BASE_OPTIONS="-scale $SCALE -mat $MATFILE -rhs $RHSFILE -ref_solution $REFFILE"
 EUCLID_OPTIONS="-radbj_sub_pc_hypre_boomeramg_smooth_type Euclid -radbj_sub_pc_hypre_boomeramg_eu_level 1 \
 -radbjin_sub_pc_hypre_boomeramg_smooth_type Euclid -radbjin_sub_pc_hypre_boomeramg_eu_level 1"
 
@@ -76,18 +94,18 @@ if [ ! -x $EXE ]; then
     exit 1
 fi
 
-# all dumped Nr = 1 systems at this LEVEL, unless SNAPSHOTS is given
+# all dumped Nr = NR systems at this LEVEL, unless SNAPSHOTS is given
 if [ -z "$SNAPSHOTS" ]; then
-    for d in $DATADIR/sys_toroidal_*_nr1_L${LEVEL}; do
+    for d in $DATADIR/sys_toroidal_*_nr${NR}_L${LEVEL}; do
         [ -d "$d" ] || continue
         s=$(basename $d)
         s=${s#sys_toroidal_}
-        SNAPSHOTS="$SNAPSHOTS ${s%_nr1_L${LEVEL}}"
+        SNAPSHOTS="$SNAPSHOTS ${s%_nr${NR}_L${LEVEL}}"
     done
 fi
 SYSTEMS=""
 for snap in $SNAPSHOTS; do
-    sys=sys_toroidal_${snap}_nr1_L${LEVEL}
+    sys=sys_toroidal_${snap}_nr${NR}_L${LEVEL}
     ok=1
     for f in $MATFILE $RHSFILE $REFFILE petsc_block_sizes.txt; do
         [ -f $DATADIR/$sys/$f ] || { echo "'$f' not found in $DATADIR/$sys: skipped" >&2; ok=0; break; }
@@ -95,11 +113,11 @@ for snap in $SNAPSHOTS; do
     (( ok )) && SYSTEMS="$SYSTEMS $sys"
 done
 if [ -z "$SYSTEMS" ]; then
-    echo "No dumped Nr = 1 systems at LEVEL $LEVEL in $DATADIR: run run_compare_solvers_nr1_cluster.sh first." >&2
+    echo "No dumped Nr = $NR systems at LEVEL $LEVEL in $DATADIR: run NR=$NR LEVEL=$LEVEL run_compare_solvers_nr1_cluster.sh first." >&2
     exit 1
 fi
 echo "Systems:$SYSTEMS"
-echo "NPROCS = $NPROCS, smoothers = $SMOOTHERS, $REPEATS repeats"
+echo "Nr = $NR, LEVEL = $LEVEL, -scale $SCALE, NPROCS =$NPROCS, smoothers = $SMOOTHERS, $REPEATS repeats"
 
 CSV=$OUTDIR/timings.csv
 echo "system,nprocs,smoother,repeat,exit_code,wall_s,scale,method,its,status,setup_s,solve_s,res,err" > $CSV

@@ -1,0 +1,451 @@
+# run_scaling_nr1_cluster.sh LEVEL=4 (after job 2919957), Nr=1, testkinetichypreradius -scale diag, n = 1..64, smoother default|euclid, 2 repeats
+# 8 snapshots (injection_tf skipped: no reference solution)
+system,nprocs,smoother,repeat,exit_code,wall_s,scale,method,its,status,setup_s,solve_s,res,err
+sys_toroidal_CQ_t10ms_nr1_L4,1,default,1,0,54.904100297,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.347,26.270,8.55e+01,9.88e-01
+sys_toroidal_CQ_t10ms_nr1_L4,1,default,1,0,54.904100297,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.345,26.070,-nan,inf
+sys_toroidal_CQ_t10ms_nr1_L4,1,default,2,0,54.640580911,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.327,26.352,8.55e+01,9.88e-01
+sys_toroidal_CQ_t10ms_nr1_L4,1,default,2,0,54.640580911,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.343,26.228,-nan,inf
+sys_toroidal_CQ_t10ms_nr1_L4,1,euclid,1,0,11.968643129,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",10,converged,2.965,1.747,3.46e-07,8.47e-11
+sys_toroidal_CQ_t10ms_nr1_L4,1,euclid,1,0,11.968643129,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.985,2.835,1.18e-08,0.00e+00
+sys_toroidal_CQ_t10ms_nr1_L4,1,euclid,2,0,13.031119634,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",10,converged,3.029,1.750,3.46e-07,8.47e-11
+sys_toroidal_CQ_t10ms_nr1_L4,1,euclid,2,0,13.031119634,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.992,2.852,1.18e-08,0.00e+00
+sys_toroidal_CQ_t10ms_nr1_L4,2,default,1,0,33.199694281,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.258,15.570,8.55e+01,9.88e-01
+sys_toroidal_CQ_t10ms_nr1_L4,2,default,1,0,33.199694281,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.261,15.555,-nan,inf
+sys_toroidal_CQ_t10ms_nr1_L4,2,default,2,0,33.443582121,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.258,15.771,8.55e+01,9.88e-01
+sys_toroidal_CQ_t10ms_nr1_L4,2,default,2,0,33.443582121,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.261,15.666,-nan,inf
+sys_toroidal_CQ_t10ms_nr1_L4,2,euclid,1,0,9.536637462,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",10,converged,2.006,1.537,3.76e-07,5.40e-11
+sys_toroidal_CQ_t10ms_nr1_L4,2,euclid,1,0,9.536637462,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.991,2.519,1.30e-08,2.92e-12
+sys_toroidal_CQ_t10ms_nr1_L4,2,euclid,2,0,9.568950481,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",10,converged,2.019,1.547,3.76e-07,5.40e-11
+sys_toroidal_CQ_t10ms_nr1_L4,2,euclid,2,0,9.568950481,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.994,2.504,1.30e-08,2.92e-12
+sys_toroidal_CQ_t10ms_nr1_L4,4,default,1,0,20.216139736,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.178,9.252,6.51e+01,9.18e-01
+sys_toroidal_CQ_t10ms_nr1_L4,4,default,1,0,20.216139736,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.180,9.221,-nan,inf
+sys_toroidal_CQ_t10ms_nr1_L4,4,default,2,0,20.258664642,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.179,9.247,6.51e+01,9.18e-01
+sys_toroidal_CQ_t10ms_nr1_L4,4,default,2,0,20.258664642,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.176,9.255,-nan,inf
+sys_toroidal_CQ_t10ms_nr1_L4,4,euclid,1,0,7.743190953,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",24,converged,1.330,2.171,3.66e-06,1.39e-09
+sys_toroidal_CQ_t10ms_nr1_L4,4,euclid,1,0,7.743190953,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.302,1.552,1.18e-08,1.96e-12
+sys_toroidal_CQ_t10ms_nr1_L4,4,euclid,2,0,7.735098786,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",24,converged,1.313,2.182,3.66e-06,1.39e-09
+sys_toroidal_CQ_t10ms_nr1_L4,4,euclid,2,0,7.735098786,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.321,1.551,1.18e-08,1.96e-12
+sys_toroidal_CQ_t10ms_nr1_L4,8,default,1,0,18.952795422,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,3.295,5.453,2.62e+01,3.35e-01
+sys_toroidal_CQ_t10ms_nr1_L4,8,default,1,0,18.952795422,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,3.347,5.488,-nan,inf
+sys_toroidal_CQ_t10ms_nr1_L4,8,default,2,0,19.007384888,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,3.354,5.423,2.62e+01,3.35e-01
+sys_toroidal_CQ_t10ms_nr1_L4,8,default,2,0,19.007384888,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,3.334,5.517,-nan,inf
+sys_toroidal_CQ_t10ms_nr1_L4,8,euclid,1,0,23.269869824,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,9.863,0.816,4.52e-08,4.67e-12
+sys_toroidal_CQ_t10ms_nr1_L4,8,euclid,1,0,23.269869824,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.833,1.347,1.19e-08,1.27e-12
+sys_toroidal_CQ_t10ms_nr1_L4,8,euclid,2,0,23.282667767,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,9.882,0.816,4.52e-08,4.67e-12
+sys_toroidal_CQ_t10ms_nr1_L4,8,euclid,2,0,23.282667767,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.877,1.315,1.19e-08,1.27e-12
+sys_toroidal_CQ_t10ms_nr1_L4,16,default,1,0,9.605061548,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",35,converged,2.476,1.171,1.19e-08,2.17e-11
+sys_toroidal_CQ_t10ms_nr1_L4,16,default,1,0,9.605061548,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.473,1.887,1.24e-08,4.67e-12
+sys_toroidal_CQ_t10ms_nr1_L4,16,default,2,0,9.486382207,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",35,converged,2.467,1.180,1.19e-08,2.17e-11
+sys_toroidal_CQ_t10ms_nr1_L4,16,default,2,0,9.486382207,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.459,1.900,1.24e-08,4.67e-12
+sys_toroidal_CQ_t10ms_nr1_L4,16,euclid,1,0,24.950133322,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",109,converged,8.640,5.176,7.98e-08,5.10e-11
+sys_toroidal_CQ_t10ms_nr1_L4,16,euclid,1,0,24.950133322,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.614,1.023,1.23e-08,4.31e-12
+sys_toroidal_CQ_t10ms_nr1_L4,16,euclid,2,0,25.075431809,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",109,converged,8.654,5.242,7.98e-08,5.10e-11
+sys_toroidal_CQ_t10ms_nr1_L4,16,euclid,2,0,25.075431809,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.627,1.054,1.23e-08,4.31e-12
+sys_toroidal_CQ_t10ms_nr1_L4,32,default,1,0,11.455287045,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",153,converged,1.667,3.951,1.02e-08,3.08e-11
+sys_toroidal_CQ_t10ms_nr1_L4,32,default,1,0,11.455287045,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.652,2.427,1.18e-08,2.45e-12
+sys_toroidal_CQ_t10ms_nr1_L4,32,default,2,0,11.480000310,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",153,converged,1.731,3.949,1.02e-08,3.08e-11
+sys_toroidal_CQ_t10ms_nr1_L4,32,default,2,0,11.480000310,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.648,2.417,1.18e-08,2.45e-12
+sys_toroidal_CQ_t10ms_nr1_L4,32,euclid,1,0,52.489301015,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",292,converged,7.989,10.655,1.33e-08,2.47e-11
+sys_toroidal_CQ_t10ms_nr1_L4,32,euclid,1,0,52.489301015,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.065,23.979,1.17e-08,2.68e-12
+sys_toroidal_CQ_t10ms_nr1_L4,32,euclid,2,0,52.123252123,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",292,converged,8.091,10.639,1.33e-08,2.47e-11
+sys_toroidal_CQ_t10ms_nr1_L4,32,euclid,2,0,52.123252123,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.133,23.444,1.17e-08,2.68e-12
+sys_toroidal_CQ_t10ms_nr1_L4,64,default,1,0,4.356293767,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",20,converged,0.704,0.292,1.29e-08,2.32e-11
+sys_toroidal_CQ_t10ms_nr1_L4,64,default,1,0,4.356293767,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.694,0.350,1.09e-08,4.23e-12
+sys_toroidal_CQ_t10ms_nr1_L4,64,default,2,0,4.323278329,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",20,converged,0.706,0.292,1.29e-08,2.32e-11
+sys_toroidal_CQ_t10ms_nr1_L4,64,default,2,0,4.323278329,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.668,0.330,1.09e-08,4.23e-12
+sys_toroidal_CQ_t10ms_nr1_L4,64,euclid,1,0,16.970485910,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",61,converged,5.215,1.590,1.51e-08,1.20e-11
+sys_toroidal_CQ_t10ms_nr1_L4,64,euclid,1,0,16.970485910,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,5.185,2.614,1.14e-08,4.10e-12
+sys_toroidal_CQ_t10ms_nr1_L4,64,euclid,2,0,17.076058836,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",61,converged,5.210,1.587,1.51e-08,1.20e-11
+sys_toroidal_CQ_t10ms_nr1_L4,64,euclid,2,0,17.076058836,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,5.176,2.612,1.14e-08,4.10e-12
+sys_toroidal_CQ_t20ms_nr1_L4,1,default,1,0,54.547743974,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.328,26.171,1.13e+01,9.85e-01
+sys_toroidal_CQ_t20ms_nr1_L4,1,default,1,0,54.547743974,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.343,26.046,-nan,inf
+sys_toroidal_CQ_t20ms_nr1_L4,1,default,2,0,54.316006539,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.328,26.171,1.13e+01,9.85e-01
+sys_toroidal_CQ_t20ms_nr1_L4,1,default,2,0,54.316006539,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.342,26.051,-nan,inf
+sys_toroidal_CQ_t20ms_nr1_L4,1,euclid,1,0,14.522390488,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",25,converged,2.985,4.232,1.88e-07,4.24e-10
+sys_toroidal_CQ_t20ms_nr1_L4,1,euclid,1,0,14.522390488,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.973,2.948,1.17e-08,0.00e+00
+sys_toroidal_CQ_t20ms_nr1_L4,1,euclid,2,0,14.601945494,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",25,converged,3.020,4.245,1.88e-07,4.24e-10
+sys_toroidal_CQ_t20ms_nr1_L4,1,euclid,2,0,14.601945494,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.954,2.987,1.17e-08,0.00e+00
+sys_toroidal_CQ_t20ms_nr1_L4,2,default,1,0,51.662141212,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.256,15.450,1.13e+01,9.85e-01
+sys_toroidal_CQ_t20ms_nr1_L4,2,default,1,0,51.662141212,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.257,15.552,-nan,inf
+sys_toroidal_CQ_t20ms_nr1_L4,2,default,2,0,33.135759475,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.253,15.558,1.13e+01,9.85e-01
+sys_toroidal_CQ_t20ms_nr1_L4,2,default,2,0,33.135759475,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.256,15.583,-nan,inf
+sys_toroidal_CQ_t20ms_nr1_L4,2,euclid,1,0,9.996053653,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,1.978,1.949,1.75e-07,1.26e-10
+sys_toroidal_CQ_t20ms_nr1_L4,2,euclid,1,0,9.996053653,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.958,2.634,1.29e-08,1.46e-12
+sys_toroidal_CQ_t20ms_nr1_L4,2,euclid,2,0,10.386124360,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,2.019,1.944,1.75e-07,1.26e-10
+sys_toroidal_CQ_t20ms_nr1_L4,2,euclid,2,0,10.386124360,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.971,2.624,1.29e-08,1.46e-12
+sys_toroidal_CQ_t20ms_nr1_L4,4,default,1,0,20.320993314,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.176,9.240,2.52e+01,9.80e-01
+sys_toroidal_CQ_t20ms_nr1_L4,4,default,1,0,20.320993314,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.179,9.347,-nan,inf
+sys_toroidal_CQ_t20ms_nr1_L4,4,default,2,0,20.283795551,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.178,9.265,2.52e+01,9.80e-01
+sys_toroidal_CQ_t20ms_nr1_L4,4,default,2,0,20.283795551,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.176,9.301,-nan,inf
+sys_toroidal_CQ_t20ms_nr1_L4,4,euclid,1,0,7.572839264,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",22,converged,1.301,1.977,2.60e-07,7.11e-11
+sys_toroidal_CQ_t20ms_nr1_L4,4,euclid,1,0,7.572839264,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.301,1.626,1.44e-08,3.38e-12
+sys_toroidal_CQ_t20ms_nr1_L4,4,euclid,2,0,7.557197264,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",22,converged,1.297,1.994,2.60e-07,7.11e-11
+sys_toroidal_CQ_t20ms_nr1_L4,4,euclid,2,0,7.557197264,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.275,1.625,1.44e-08,3.38e-12
+sys_toroidal_CQ_t20ms_nr1_L4,8,default,1,0,12.868991756,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",37,converged,3.396,1.842,1.23e-08,2.85e-11
+sys_toroidal_CQ_t20ms_nr1_L4,8,default,1,0,12.868991756,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.239,3.006,1.31e-08,1.95e-12
+sys_toroidal_CQ_t20ms_nr1_L4,8,default,2,0,12.834885911,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",37,converged,3.311,1.832,1.23e-08,2.85e-11
+sys_toroidal_CQ_t20ms_nr1_L4,8,default,2,0,12.834885911,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.306,3.004,1.31e-08,1.95e-12
+sys_toroidal_CQ_t20ms_nr1_L4,8,euclid,1,0,23.164115511,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,9.778,0.806,1.68e-08,8.92e-13
+sys_toroidal_CQ_t20ms_nr1_L4,8,euclid,1,0,23.164115511,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.843,1.322,1.12e-08,4.16e-12
+sys_toroidal_CQ_t20ms_nr1_L4,8,euclid,2,0,23.028095555,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,9.734,0.814,1.68e-08,8.92e-13
+sys_toroidal_CQ_t20ms_nr1_L4,8,euclid,2,0,23.028095555,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.762,1.310,1.12e-08,4.16e-12
+sys_toroidal_CQ_t20ms_nr1_L4,16,default,1,0,8.981098557,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",30,converged,2.449,1.003,1.54e-08,1.11e-11
+sys_toroidal_CQ_t20ms_nr1_L4,16,default,1,0,8.981098557,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.438,1.625,1.27e-08,1.23e-12
+sys_toroidal_CQ_t20ms_nr1_L4,16,default,2,0,8.924934958,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",30,converged,2.449,0.996,1.54e-08,1.11e-11
+sys_toroidal_CQ_t20ms_nr1_L4,16,default,2,0,8.924934958,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.423,1.595,1.27e-08,1.23e-12
+sys_toroidal_CQ_t20ms_nr1_L4,16,euclid,1,0,20.172676927,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,8.579,0.612,2.19e-08,1.14e-11
+sys_toroidal_CQ_t20ms_nr1_L4,16,euclid,1,0,20.172676927,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.546,0.943,1.14e-08,4.02e-12
+sys_toroidal_CQ_t20ms_nr1_L4,16,euclid,2,0,20.163913666,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,8.557,0.611,2.19e-08,1.14e-11
+sys_toroidal_CQ_t20ms_nr1_L4,16,euclid,2,0,20.163913666,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.565,0.920,1.14e-08,4.02e-12
+sys_toroidal_CQ_t20ms_nr1_L4,32,default,1,0,15.487918359,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",153,converged,1.704,3.878,1.30e-07,5.02e-10
+sys_toroidal_CQ_t20ms_nr1_L4,32,default,1,0,15.487918359,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.693,6.426,1.33e-08,8.88e-13
+sys_toroidal_CQ_t20ms_nr1_L4,32,default,2,0,15.348089288,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",153,converged,1.634,3.879,1.30e-07,5.02e-10
+sys_toroidal_CQ_t20ms_nr1_L4,32,default,2,0,15.348089288,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.619,6.457,1.33e-08,8.88e-13
+sys_toroidal_CQ_t20ms_nr1_L4,32,euclid,1,0,34.107576965,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",188,converged,7.936,6.934,3.81e-08,5.23e-12
+sys_toroidal_CQ_t20ms_nr1_L4,32,euclid,1,0,34.107576965,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.981,9.484,1.34e-08,6.78e-12
+sys_toroidal_CQ_t20ms_nr1_L4,32,euclid,2,0,34.055960552,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",188,converged,7.985,6.867,3.81e-08,5.23e-12
+sys_toroidal_CQ_t20ms_nr1_L4,32,euclid,2,0,34.055960552,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.928,9.462,1.34e-08,6.78e-12
+sys_toroidal_CQ_t20ms_nr1_L4,64,default,1,0,4.339339922,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",20,converged,0.694,0.292,1.44e-08,4.33e-11
+sys_toroidal_CQ_t20ms_nr1_L4,64,default,1,0,4.339339922,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.676,0.355,1.29e-08,1.50e-12
+sys_toroidal_CQ_t20ms_nr1_L4,64,default,2,0,4.319003209,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",20,converged,0.690,0.293,1.44e-08,4.33e-11
+sys_toroidal_CQ_t20ms_nr1_L4,64,default,2,0,4.319003209,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.649,0.350,1.29e-08,1.50e-12
+sys_toroidal_CQ_t20ms_nr1_L4,64,euclid,1,0,16.149123265,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",54,converged,5.140,1.390,3.45e-08,1.43e-11
+sys_toroidal_CQ_t20ms_nr1_L4,64,euclid,1,0,16.149123265,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,5.143,2.101,1.34e-08,1.27e-12
+sys_toroidal_CQ_t20ms_nr1_L4,64,euclid,2,0,16.300529845,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",54,converged,5.285,1.402,3.45e-08,1.43e-11
+sys_toroidal_CQ_t20ms_nr1_L4,64,euclid,2,0,16.300529845,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,5.149,2.101,1.34e-08,1.27e-12
+sys_toroidal_CQ_t29ms_nr1_L4,1,default,1,0,54.349405692,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.329,26.087,1.09e+02,1.21e+00
+sys_toroidal_CQ_t29ms_nr1_L4,1,default,1,0,54.349405692,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.343,26.067,-nan,inf
+sys_toroidal_CQ_t29ms_nr1_L4,1,default,2,0,54.344764201,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.326,26.142,1.09e+02,1.21e+00
+sys_toroidal_CQ_t29ms_nr1_L4,1,default,2,0,54.344764201,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.344,26.101,-nan,inf
+sys_toroidal_CQ_t29ms_nr1_L4,1,euclid,1,0,57.994602716,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",108,converged,2.996,21.095,1.01e-08,5.94e-11
+sys_toroidal_CQ_t29ms_nr1_L4,1,euclid,1,0,57.994602716,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.989,29.487,1.08e-08,0.00e+00
+sys_toroidal_CQ_t29ms_nr1_L4,1,euclid,2,0,57.709389311,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",108,converged,2.973,21.020,1.01e-08,5.94e-11
+sys_toroidal_CQ_t29ms_nr1_L4,1,euclid,2,0,57.709389311,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.959,29.345,1.08e-08,0.00e+00
+sys_toroidal_CQ_t29ms_nr1_L4,2,default,1,0,33.116233888,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.255,15.527,1.09e+02,1.21e+00
+sys_toroidal_CQ_t29ms_nr1_L4,2,default,1,0,33.116233888,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.260,15.551,-nan,inf
+sys_toroidal_CQ_t29ms_nr1_L4,2,default,2,0,33.275505436,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.254,15.598,1.09e+02,1.21e+00
+sys_toroidal_CQ_t29ms_nr1_L4,2,default,2,0,33.275505436,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.256,15.687,-nan,inf
+sys_toroidal_CQ_t29ms_nr1_L4,2,euclid,1,0,71.497413428,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",206,converged,1.994,32.421,9.20e-09,2.71e-11
+sys_toroidal_CQ_t29ms_nr1_L4,2,euclid,1,0,71.497413428,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.981,33.585,1.11e-08,7.33e-13
+sys_toroidal_CQ_t29ms_nr1_L4,2,euclid,2,0,71.370952751,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",206,converged,1.977,32.326,9.20e-09,2.71e-11
+sys_toroidal_CQ_t29ms_nr1_L4,2,euclid,2,0,71.370952751,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.954,33.593,1.11e-08,7.33e-13
+sys_toroidal_CQ_t29ms_nr1_L4,4,default,1,0,20.371661855,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.177,9.256,2.37e+01,9.52e-01
+sys_toroidal_CQ_t29ms_nr1_L4,4,default,1,0,20.371661855,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.175,9.357,-nan,inf
+sys_toroidal_CQ_t29ms_nr1_L4,4,default,2,0,20.325341114,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.177,9.322,2.37e+01,9.52e-01
+sys_toroidal_CQ_t29ms_nr1_L4,4,default,2,0,20.325341114,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.181,9.254,-nan,inf
+sys_toroidal_CQ_t29ms_nr1_L4,4,euclid,1,0,23.116231759,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,1.303,9.632,2.31e+01,6.11e-01
+sys_toroidal_CQ_t29ms_nr1_L4,4,euclid,1,0,23.116231759,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,1.279,9.516,-nan,inf
+sys_toroidal_CQ_t29ms_nr1_L4,4,euclid,2,0,23.108812942,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,1.305,9.559,2.31e+01,6.11e-01
+sys_toroidal_CQ_t29ms_nr1_L4,4,euclid,2,0,23.108812942,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,1.278,9.567,-nan,inf
+sys_toroidal_CQ_t29ms_nr1_L4,8,default,1,0,28.423251958,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",133,converged,3.221,7.023,8.91e-09,9.64e-12
+sys_toroidal_CQ_t29ms_nr1_L4,8,default,1,0,28.423251958,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.274,13.518,1.07e-08,1.82e-12
+sys_toroidal_CQ_t29ms_nr1_L4,8,default,2,0,28.292784184,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",133,converged,3.280,6.985,8.91e-09,9.64e-12
+sys_toroidal_CQ_t29ms_nr1_L4,8,default,2,0,28.292784184,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.204,13.448,1.07e-08,1.82e-12
+sys_toroidal_CQ_t29ms_nr1_L4,8,euclid,1,0,23.142478950,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",15,converged,9.745,0.861,1.65e-08,2.33e-11
+sys_toroidal_CQ_t29ms_nr1_L4,8,euclid,1,0,23.142478950,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.744,1.409,1.17e-08,9.83e-13
+sys_toroidal_CQ_t29ms_nr1_L4,8,euclid,2,0,23.094691961,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",15,converged,9.751,0.854,1.65e-08,2.33e-11
+sys_toroidal_CQ_t29ms_nr1_L4,8,euclid,2,0,23.094691961,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.698,1.388,1.17e-08,9.83e-13
+sys_toroidal_CQ_t29ms_nr1_L4,16,default,1,0,8.653337218,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",27,converged,2.422,0.903,1.52e-08,7.16e-12
+sys_toroidal_CQ_t29ms_nr1_L4,16,default,1,0,8.653337218,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.414,1.444,1.18e-08,2.28e-12
+sys_toroidal_CQ_t29ms_nr1_L4,16,default,2,0,8.636867029,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",27,converged,2.417,0.899,1.52e-08,7.16e-12
+sys_toroidal_CQ_t29ms_nr1_L4,16,default,2,0,8.636867029,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.398,1.451,1.18e-08,2.28e-12
+sys_toroidal_CQ_t29ms_nr1_L4,16,euclid,1,0,19.978268826,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,8.479,0.605,1.48e-08,1.90e-12
+sys_toroidal_CQ_t29ms_nr1_L4,16,euclid,1,0,19.978268826,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.462,0.927,1.14e-08,7.09e-13
+sys_toroidal_CQ_t29ms_nr1_L4,16,euclid,2,0,20.025339206,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,8.469,0.616,1.48e-08,1.90e-12
+sys_toroidal_CQ_t29ms_nr1_L4,16,euclid,2,0,20.025339206,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.492,0.922,1.14e-08,7.09e-13
+sys_toroidal_CQ_t29ms_nr1_L4,32,default,1,0,11.119180046,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",147,converged,1.632,3.694,1.15e-08,1.92e-11
+sys_toroidal_CQ_t29ms_nr1_L4,32,default,1,0,11.119180046,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.616,2.079,1.12e-08,1.89e-13
+sys_toroidal_CQ_t29ms_nr1_L4,32,default,2,0,10.762010782,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",147,converged,1.629,3.687,1.15e-08,1.92e-11
+sys_toroidal_CQ_t29ms_nr1_L4,32,default,2,0,10.762010782,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.600,2.060,1.12e-08,1.89e-13
+sys_toroidal_CQ_t29ms_nr1_L4,32,euclid,1,0,200.390528049,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",1000,DIVERGED,7.921,36.726,1.26e-06,2.95e-09
+sys_toroidal_CQ_t29ms_nr1_L4,32,euclid,1,0,200.390528049,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",9,converged,7.900,146.025,2.83e-08,2.99e-11
+sys_toroidal_CQ_t29ms_nr1_L4,32,euclid,2,0,199.446300807,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",1000,DIVERGED,7.887,36.168,1.26e-06,2.95e-09
+sys_toroidal_CQ_t29ms_nr1_L4,32,euclid,2,0,199.446300807,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",9,converged,7.870,145.728,2.83e-08,2.99e-11
+sys_toroidal_CQ_t29ms_nr1_L4,64,default,1,0,4.319234923,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.684,0.274,2.27e-08,6.59e-11
+sys_toroidal_CQ_t29ms_nr1_L4,64,default,1,0,4.319234923,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.667,0.326,1.08e-08,2.10e-12
+sys_toroidal_CQ_t29ms_nr1_L4,64,default,2,0,4.270497145,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.673,0.274,2.27e-08,6.59e-11
+sys_toroidal_CQ_t29ms_nr1_L4,64,default,2,0,4.270497145,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.667,0.337,1.08e-08,2.10e-12
+sys_toroidal_CQ_t29ms_nr1_L4,64,euclid,1,0,15.334057289,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",48,converged,5.107,1.223,1.36e-08,1.06e-11
+sys_toroidal_CQ_t29ms_nr1_L4,64,euclid,1,0,15.334057289,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,5.096,1.561,1.14e-08,4.12e-12
+sys_toroidal_CQ_t29ms_nr1_L4,64,euclid,2,0,15.421847339,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",48,converged,5.142,1.260,1.36e-08,1.06e-11
+sys_toroidal_CQ_t29ms_nr1_L4,64,euclid,2,0,15.421847339,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,5.099,1.548,1.14e-08,4.12e-12
+sys_toroidal_CQ_t40ms_nr1_L4,1,default,1,0,54.147993056,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.325,26.020,1.75e+01,8.74e-01
+sys_toroidal_CQ_t40ms_nr1_L4,1,default,1,0,54.147993056,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.342,25.966,-nan,inf
+sys_toroidal_CQ_t40ms_nr1_L4,1,default,2,0,54.199513372,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.326,26.067,1.75e+01,8.74e-01
+sys_toroidal_CQ_t40ms_nr1_L4,1,default,2,0,54.199513372,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.342,26.040,-nan,inf
+sys_toroidal_CQ_t40ms_nr1_L4,1,euclid,1,0,12.915566694,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,2.990,2.383,1.03e-07,8.57e-11
+sys_toroidal_CQ_t40ms_nr1_L4,1,euclid,1,0,12.915566694,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.991,3.124,8.54e-09,0.00e+00
+sys_toroidal_CQ_t40ms_nr1_L4,1,euclid,2,0,12.849662884,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,2.984,2.378,1.03e-07,8.57e-11
+sys_toroidal_CQ_t40ms_nr1_L4,1,euclid,2,0,12.849662884,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.946,3.142,8.54e-09,0.00e+00
+sys_toroidal_CQ_t40ms_nr1_L4,2,default,1,0,33.006607365,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.251,15.483,1.75e+01,8.74e-01
+sys_toroidal_CQ_t40ms_nr1_L4,2,default,1,0,33.006607365,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.253,15.526,-nan,inf
+sys_toroidal_CQ_t40ms_nr1_L4,2,default,2,0,32.962943219,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.248,15.472,1.75e+01,8.74e-01
+sys_toroidal_CQ_t40ms_nr1_L4,2,default,2,0,32.962943219,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.253,15.474,-nan,inf
+sys_toroidal_CQ_t40ms_nr1_L4,2,euclid,1,0,10.276380667,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,1.981,2.085,1.16e-07,1.29e-11
+sys_toroidal_CQ_t40ms_nr1_L4,2,euclid,1,0,10.276380667,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.977,2.753,1.02e-08,1.26e-12
+sys_toroidal_CQ_t40ms_nr1_L4,2,euclid,2,0,10.273412305,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,1.962,2.081,1.16e-07,1.29e-11
+sys_toroidal_CQ_t40ms_nr1_L4,2,euclid,2,0,10.273412305,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.966,2.760,1.02e-08,1.26e-12
+sys_toroidal_CQ_t40ms_nr1_L4,4,default,1,0,20.184601006,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.172,9.242,7.95e+01,9.67e-01
+sys_toroidal_CQ_t40ms_nr1_L4,4,default,1,0,20.184601006,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.171,9.220,-nan,inf
+sys_toroidal_CQ_t40ms_nr1_L4,4,default,2,0,20.206578216,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.177,9.250,7.95e+01,9.67e-01
+sys_toroidal_CQ_t40ms_nr1_L4,4,default,2,0,20.206578216,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.170,9.216,-nan,inf
+sys_toroidal_CQ_t40ms_nr1_L4,4,euclid,1,0,6.871137645,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",16,converged,1.283,1.439,4.52e-07,7.94e-10
+sys_toroidal_CQ_t40ms_nr1_L4,4,euclid,1,0,6.871137645,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.270,1.509,1.10e-08,1.31e-12
+sys_toroidal_CQ_t40ms_nr1_L4,4,euclid,2,0,6.892962016,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",16,converged,1.288,1.437,4.52e-07,7.94e-10
+sys_toroidal_CQ_t40ms_nr1_L4,4,euclid,2,0,6.892962016,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.274,1.529,1.10e-08,1.31e-12
+sys_toroidal_CQ_t40ms_nr1_L4,8,default,1,0,16.370560208,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",114,converged,3.253,6.129,8.98e-09,2.40e-11
+sys_toroidal_CQ_t40ms_nr1_L4,8,default,1,0,16.370560208,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.170,2.445,9.45e-09,2.59e-12
+sys_toroidal_CQ_t40ms_nr1_L4,8,default,2,0,16.390141578,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",114,converged,3.254,6.125,8.98e-09,2.40e-11
+sys_toroidal_CQ_t40ms_nr1_L4,8,default,2,0,16.390141578,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.236,2.405,9.45e-09,2.59e-12
+sys_toroidal_CQ_t40ms_nr1_L4,8,euclid,1,0,22.839448568,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,9.667,0.788,1.14e-08,8.33e-13
+sys_toroidal_CQ_t40ms_nr1_L4,8,euclid,1,0,22.839448568,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.695,1.282,9.57e-09,3.77e-12
+sys_toroidal_CQ_t40ms_nr1_L4,8,euclid,2,0,22.917812706,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,9.747,0.808,1.14e-08,8.33e-13
+sys_toroidal_CQ_t40ms_nr1_L4,8,euclid,2,0,22.917812706,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.702,1.272,9.57e-09,3.77e-12
+sys_toroidal_CQ_t40ms_nr1_L4,16,default,1,0,8.907595294,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",31,converged,2.400,1.030,1.07e-08,8.02e-12
+sys_toroidal_CQ_t40ms_nr1_L4,16,default,1,0,8.907595294,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.379,1.603,9.32e-09,2.84e-12
+sys_toroidal_CQ_t40ms_nr1_L4,16,default,2,0,8.874224071,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",31,converged,2.393,1.026,1.07e-08,8.02e-12
+sys_toroidal_CQ_t40ms_nr1_L4,16,default,2,0,8.874224071,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.379,1.613,9.32e-09,2.84e-12
+sys_toroidal_CQ_t40ms_nr1_L4,16,euclid,1,0,20.039369960,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",16,converged,8.396,0.703,2.20e-08,5.96e-12
+sys_toroidal_CQ_t40ms_nr1_L4,16,euclid,1,0,20.039369960,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.397,1.043,9.90e-09,2.41e-12
+sys_toroidal_CQ_t40ms_nr1_L4,16,euclid,2,0,19.998667934,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",16,converged,8.417,0.690,2.20e-08,5.96e-12
+sys_toroidal_CQ_t40ms_nr1_L4,16,euclid,2,0,19.998667934,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.372,1.034,9.90e-09,2.41e-12
+sys_toroidal_CQ_t40ms_nr1_L4,32,default,1,0,10.485578565,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",143,converged,1.598,3.556,9.32e-09,1.41e-11
+sys_toroidal_CQ_t40ms_nr1_L4,32,default,1,0,10.485578565,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.589,1.960,8.63e-09,4.99e-12
+sys_toroidal_CQ_t40ms_nr1_L4,32,default,2,0,10.381268553,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",143,converged,1.588,3.533,9.32e-09,1.41e-11
+sys_toroidal_CQ_t40ms_nr1_L4,32,default,2,0,10.381268553,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.577,1.946,8.63e-09,4.99e-12
+sys_toroidal_CQ_t40ms_nr1_L4,32,euclid,1,0,24.805972541,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,7.845,3.697,3.72e+01,7.01e-02
+sys_toroidal_CQ_t40ms_nr1_L4,32,euclid,1,0,24.805972541,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,7.882,3.613,-nan,inf
+sys_toroidal_CQ_t40ms_nr1_L4,32,euclid,2,0,24.728474841,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,7.800,3.727,3.72e+01,7.01e-02
+sys_toroidal_CQ_t40ms_nr1_L4,32,euclid,2,0,24.728474841,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,7.783,3.610,-nan,inf
+sys_toroidal_CQ_t40ms_nr1_L4,64,default,1,0,9.383276821,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.702,0.275,1.46e-08,5.47e-12
+sys_toroidal_CQ_t40ms_nr1_L4,64,default,1,0,9.383276821,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.673,0.309,8.97e-09,1.98e-12
+sys_toroidal_CQ_t40ms_nr1_L4,64,default,2,0,4.251131470,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.682,0.272,1.46e-08,5.47e-12
+sys_toroidal_CQ_t40ms_nr1_L4,64,default,2,0,4.251131470,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.648,0.330,8.97e-09,1.98e-12
+sys_toroidal_CQ_t40ms_nr1_L4,64,euclid,1,0,15.013210521,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",49,converged,4.935,1.237,2.72e-08,3.87e-11
+sys_toroidal_CQ_t40ms_nr1_L4,64,euclid,1,0,15.013210521,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,4.923,1.551,9.04e-09,4.12e-13
+sys_toroidal_CQ_t40ms_nr1_L4,64,euclid,2,0,14.872350273,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",49,converged,4.894,1.249,2.72e-08,3.87e-11
+sys_toroidal_CQ_t40ms_nr1_L4,64,euclid,2,0,14.872350273,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,4.833,1.541,9.04e-09,4.12e-13
+sys_toroidal_CQ_t49ms_nr1_L4,1,default,1,0,54.546505982,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.318,26.242,1.09e+00,1.00e+00
+sys_toroidal_CQ_t49ms_nr1_L4,1,default,1,0,54.546505982,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.334,26.136,-nan,inf
+sys_toroidal_CQ_t49ms_nr1_L4,1,default,2,0,54.533872925,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.314,26.299,1.09e+00,1.00e+00
+sys_toroidal_CQ_t49ms_nr1_L4,1,default,2,0,54.533872925,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.330,26.159,-nan,inf
+sys_toroidal_CQ_t49ms_nr1_L4,1,euclid,1,0,87.670378823,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",205,converged,2.995,39.807,7.79e-09,1.33e-12
+sys_toroidal_CQ_t49ms_nr1_L4,1,euclid,1,0,87.670378823,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.916,40.495,8.50e-09,0.00e+00
+sys_toroidal_CQ_t49ms_nr1_L4,1,euclid,2,0,87.830926600,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",205,converged,2.957,40.135,7.79e-09,1.33e-12
+sys_toroidal_CQ_t49ms_nr1_L4,1,euclid,2,0,87.830926600,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.915,40.404,8.50e-09,0.00e+00
+sys_toroidal_CQ_t49ms_nr1_L4,2,default,1,0,32.895643800,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.241,15.448,1.09e+00,1.00e+00
+sys_toroidal_CQ_t49ms_nr1_L4,2,default,1,0,32.895643800,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.245,15.446,-nan,inf
+sys_toroidal_CQ_t49ms_nr1_L4,2,default,2,0,32.935624252,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.240,15.436,1.09e+00,1.00e+00
+sys_toroidal_CQ_t49ms_nr1_L4,2,default,2,0,32.935624252,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.250,15.469,-nan,inf
+sys_toroidal_CQ_t49ms_nr1_L4,2,euclid,1,0,61.749006596,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",167,converged,1.937,25.396,2.64e-08,1.42e-09
+sys_toroidal_CQ_t49ms_nr1_L4,2,euclid,1,0,61.749006596,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.920,31.003,8.61e-09,1.94e-12
+sys_toroidal_CQ_t49ms_nr1_L4,2,euclid,2,0,61.523749327,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",167,converged,1.933,25.417,2.64e-08,1.42e-09
+sys_toroidal_CQ_t49ms_nr1_L4,2,euclid,2,0,61.523749327,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.964,30.720,8.61e-09,1.94e-12
+sys_toroidal_CQ_t49ms_nr1_L4,4,default,1,0,20.096002171,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.164,9.149,1.09e+00,1.00e+00
+sys_toroidal_CQ_t49ms_nr1_L4,4,default,1,0,20.096002171,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.160,9.219,-nan,inf
+sys_toroidal_CQ_t49ms_nr1_L4,4,default,2,0,20.296726223,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.162,9.097,1.09e+00,1.00e+00
+sys_toroidal_CQ_t49ms_nr1_L4,4,default,2,0,20.296726223,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.158,9.068,-nan,inf
+sys_toroidal_CQ_t49ms_nr1_L4,4,euclid,1,0,37.587774937,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",167,converged,1.256,15.191,2.64e-08,1.42e-09
+sys_toroidal_CQ_t49ms_nr1_L4,4,euclid,1,0,37.587774937,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.234,18.507,8.61e-09,1.94e-12
+sys_toroidal_CQ_t49ms_nr1_L4,4,euclid,2,0,37.566907746,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",167,converged,1.248,15.052,2.64e-08,1.42e-09
+sys_toroidal_CQ_t49ms_nr1_L4,4,euclid,2,0,37.566907746,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.215,18.666,8.61e-09,1.94e-12
+sys_toroidal_CQ_t49ms_nr1_L4,8,default,1,0,12.740707187,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",39,converged,3.118,1.926,9.58e-09,1.62e-12
+sys_toroidal_CQ_t49ms_nr1_L4,8,default,1,0,12.740707187,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.051,3.267,9.66e-09,5.21e-12
+sys_toroidal_CQ_t49ms_nr1_L4,8,default,2,0,12.707875334,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",39,converged,3.051,1.920,9.58e-09,1.62e-12
+sys_toroidal_CQ_t49ms_nr1_L4,8,default,2,0,12.707875334,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.105,3.270,9.66e-09,5.21e-12
+sys_toroidal_CQ_t49ms_nr1_L4,8,euclid,1,0,22.211054309,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,9.445,0.736,1.05e-08,3.82e-12
+sys_toroidal_CQ_t49ms_nr1_L4,8,euclid,1,0,22.211054309,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.360,1.235,8.88e-09,1.75e-12
+sys_toroidal_CQ_t49ms_nr1_L4,8,euclid,2,0,22.260284458,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,9.459,0.726,1.05e-08,3.82e-12
+sys_toroidal_CQ_t49ms_nr1_L4,8,euclid,2,0,22.260284458,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.426,1.245,8.88e-09,1.75e-12
+sys_toroidal_CQ_t49ms_nr1_L4,16,default,1,0,8.087298899,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",26,converged,2.300,0.823,2.08e-08,2.48e-11
+sys_toroidal_CQ_t49ms_nr1_L4,16,default,1,0,8.087298899,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.286,1.173,9.78e-09,2.66e-12
+sys_toroidal_CQ_t49ms_nr1_L4,16,default,2,0,8.054661425,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",26,converged,2.300,0.822,2.08e-08,2.48e-11
+sys_toroidal_CQ_t49ms_nr1_L4,16,default,2,0,8.054661425,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.285,1.179,9.78e-09,2.66e-12
+sys_toroidal_CQ_t49ms_nr1_L4,16,euclid,1,0,19.065091501,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,8.079,0.568,1.23e-08,3.01e-12
+sys_toroidal_CQ_t49ms_nr1_L4,16,euclid,1,0,19.065091501,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.071,0.855,8.94e-09,1.85e-12
+sys_toroidal_CQ_t49ms_nr1_L4,16,euclid,2,0,19.173869206,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,8.110,0.575,1.23e-08,3.01e-12
+sys_toroidal_CQ_t49ms_nr1_L4,16,euclid,2,0,19.173869206,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.139,0.861,8.94e-09,1.85e-12
+sys_toroidal_CQ_t49ms_nr1_L4,32,default,1,0,11.204106353,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",143,converged,1.510,3.477,8.29e-09,7.86e-12
+sys_toroidal_CQ_t49ms_nr1_L4,32,default,1,0,11.204106353,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.511,1.890,9.21e-09,1.10e-12
+sys_toroidal_CQ_t49ms_nr1_L4,32,default,2,0,10.075524387,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",143,converged,1.504,3.475,8.29e-09,7.86e-12
+sys_toroidal_CQ_t49ms_nr1_L4,32,default,2,0,10.075524387,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.493,1.869,9.21e-09,1.10e-12
+sys_toroidal_CQ_t49ms_nr1_L4,32,euclid,1,0,32.586293938,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",199,converged,7.547,7.221,7.71e-09,2.94e-12
+sys_toroidal_CQ_t49ms_nr1_L4,32,euclid,1,0,32.586293938,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.520,8.516,8.70e-09,6.35e-12
+sys_toroidal_CQ_t49ms_nr1_L4,32,euclid,2,0,32.576225638,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",199,converged,7.475,7.218,7.71e-09,2.94e-12
+sys_toroidal_CQ_t49ms_nr1_L4,32,euclid,2,0,32.576225638,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.453,8.606,8.70e-09,6.35e-12
+sys_toroidal_CQ_t49ms_nr1_L4,64,default,1,0,4.201917689,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.648,0.279,1.28e-08,2.86e-11
+sys_toroidal_CQ_t49ms_nr1_L4,64,default,1,0,4.201917689,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.627,0.308,9.05e-09,5.58e-13
+sys_toroidal_CQ_t49ms_nr1_L4,64,default,2,0,4.139275908,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.649,0.273,1.28e-08,2.86e-11
+sys_toroidal_CQ_t49ms_nr1_L4,64,default,2,0,4.139275908,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.610,0.312,9.05e-09,5.58e-13
+sys_toroidal_CQ_t49ms_nr1_L4,64,euclid,1,0,13.761620509,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",40,converged,4.563,1.000,1.18e-08,5.50e-12
+sys_toroidal_CQ_t49ms_nr1_L4,64,euclid,1,0,13.761620509,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,4.551,1.245,8.58e-09,7.97e-12
+sys_toroidal_CQ_t49ms_nr1_L4,64,euclid,2,0,13.746860171,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",40,converged,4.573,1.024,1.18e-08,5.50e-12
+sys_toroidal_CQ_t49ms_nr1_L4,64,euclid,2,0,13.746860171,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,4.530,1.251,8.58e-09,7.97e-12
+sys_toroidal_CQ_t5ms_nr1_L4,1,default,1,0,54.269535437,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.331,26.031,2.38e+01,9.56e-01
+sys_toroidal_CQ_t5ms_nr1_L4,1,default,1,0,54.269535437,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.349,26.056,-nan,inf
+sys_toroidal_CQ_t5ms_nr1_L4,1,default,2,0,54.433967825,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.331,26.250,2.38e+01,9.56e-01
+sys_toroidal_CQ_t5ms_nr1_L4,1,default,2,0,54.433967825,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.347,26.105,-nan,inf
+sys_toroidal_CQ_t5ms_nr1_L4,1,euclid,1,0,12.000835808,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",10,converged,3.016,1.751,1.74e-06,1.32e-09
+sys_toroidal_CQ_t5ms_nr1_L4,1,euclid,1,0,12.000835808,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.987,2.852,1.04e-08,0.00e+00
+sys_toroidal_CQ_t5ms_nr1_L4,1,euclid,2,0,11.976156875,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",10,converged,3.020,1.762,1.74e-06,1.32e-09
+sys_toroidal_CQ_t5ms_nr1_L4,1,euclid,2,0,11.976156875,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.981,2.813,1.04e-08,0.00e+00
+sys_toroidal_CQ_t5ms_nr1_L4,2,default,1,0,33.078514143,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.259,15.507,2.38e+01,9.56e-01
+sys_toroidal_CQ_t5ms_nr1_L4,2,default,1,0,33.078514143,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.260,15.558,-nan,inf
+sys_toroidal_CQ_t5ms_nr1_L4,2,default,2,0,33.105881953,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.257,15.537,2.38e+01,9.56e-01
+sys_toroidal_CQ_t5ms_nr1_L4,2,default,2,0,33.105881953,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.260,15.534,-nan,inf
+sys_toroidal_CQ_t5ms_nr1_L4,2,euclid,1,0,9.674549193,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",11,converged,2.003,1.678,1.89e-06,2.01e-09
+sys_toroidal_CQ_t5ms_nr1_L4,2,euclid,1,0,9.674549193,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.989,2.522,9.31e-09,1.26e-12
+sys_toroidal_CQ_t5ms_nr1_L4,2,euclid,2,0,9.687294735,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",11,converged,1.998,1.685,1.89e-06,2.01e-09
+sys_toroidal_CQ_t5ms_nr1_L4,2,euclid,2,0,9.687294735,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.982,2.533,9.31e-09,1.26e-12
+sys_toroidal_CQ_t5ms_nr1_L4,4,default,1,0,20.423161124,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.180,9.327,4.50e+01,9.96e-01
+sys_toroidal_CQ_t5ms_nr1_L4,4,default,1,0,20.423161124,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.181,9.319,-nan,inf
+sys_toroidal_CQ_t5ms_nr1_L4,4,default,2,0,20.693979495,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.179,9.313,4.50e+01,9.96e-01
+sys_toroidal_CQ_t5ms_nr1_L4,4,default,2,0,20.693979495,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.177,9.295,-nan,inf
+sys_toroidal_CQ_t5ms_nr1_L4,4,euclid,1,0,6.792883951,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",11,converged,1.315,1.050,2.88e-06,2.95e-09
+sys_toroidal_CQ_t5ms_nr1_L4,4,euclid,1,0,6.792883951,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.302,1.733,1.03e-08,4.49e-13
+sys_toroidal_CQ_t5ms_nr1_L4,4,euclid,2,0,6.781274911,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",11,converged,1.335,1.026,2.88e-06,2.95e-09
+sys_toroidal_CQ_t5ms_nr1_L4,4,euclid,2,0,6.781274911,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.296,1.714,1.03e-08,4.49e-13
+sys_toroidal_CQ_t5ms_nr1_L4,8,default,1,0,13.126430454,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",39,converged,3.296,1.946,2.16e-08,2.20e-11
+sys_toroidal_CQ_t5ms_nr1_L4,8,default,1,0,13.126430454,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.351,3.141,1.04e-08,7.40e-13
+sys_toroidal_CQ_t5ms_nr1_L4,8,default,2,0,13.077999252,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",39,converged,3.352,1.925,2.16e-08,2.20e-11
+sys_toroidal_CQ_t5ms_nr1_L4,8,default,2,0,13.077999252,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,3.280,3.162,1.04e-08,7.40e-13
+sys_toroidal_CQ_t5ms_nr1_L4,8,euclid,1,0,23.264080906,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,9.882,0.819,2.76e-08,5.42e-12
+sys_toroidal_CQ_t5ms_nr1_L4,8,euclid,1,0,23.264080906,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.902,1.280,1.01e-08,4.85e-12
+sys_toroidal_CQ_t5ms_nr1_L4,8,euclid,2,0,23.243054696,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,9.863,0.815,2.76e-08,5.42e-12
+sys_toroidal_CQ_t5ms_nr1_L4,8,euclid,2,0,23.243054696,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,9.876,1.289,1.01e-08,4.85e-12
+sys_toroidal_CQ_t5ms_nr1_L4,16,default,1,0,10.032124381,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",41,converged,2.478,1.409,1.20e-08,5.09e-12
+sys_toroidal_CQ_t5ms_nr1_L4,16,default,1,0,10.032124381,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.462,2.231,1.07e-08,9.34e-13
+sys_toroidal_CQ_t5ms_nr1_L4,16,default,2,0,10.084196145,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",41,converged,2.472,1.399,1.20e-08,5.09e-12
+sys_toroidal_CQ_t5ms_nr1_L4,16,default,2,0,10.084196145,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.501,2.231,1.07e-08,9.34e-13
+sys_toroidal_CQ_t5ms_nr1_L4,16,euclid,1,0,20.856666478,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",17,converged,8.726,0.755,3.90e-08,2.06e-11
+sys_toroidal_CQ_t5ms_nr1_L4,16,euclid,1,0,20.856666478,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.698,1.155,1.03e-08,2.79e-12
+sys_toroidal_CQ_t5ms_nr1_L4,16,euclid,2,0,20.689266396,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",17,converged,8.681,0.751,3.90e-08,2.06e-11
+sys_toroidal_CQ_t5ms_nr1_L4,16,euclid,2,0,20.689266396,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.628,1.129,1.03e-08,2.79e-12
+sys_toroidal_CQ_t5ms_nr1_L4,32,default,1,0,8.293169778,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",52,converged,1.661,1.217,1.28e-08,3.70e-11
+sys_toroidal_CQ_t5ms_nr1_L4,32,default,1,0,8.293169778,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.652,1.995,1.02e-08,1.40e-12
+sys_toroidal_CQ_t5ms_nr1_L4,32,default,2,0,8.242967478,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",52,converged,1.655,1.221,1.28e-08,3.70e-11
+sys_toroidal_CQ_t5ms_nr1_L4,32,default,2,0,8.242967478,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.639,1.988,1.02e-08,1.40e-12
+sys_toroidal_CQ_t5ms_nr1_L4,32,euclid,1,0,25.355539901,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,8.051,3.842,6.24e+01,2.40e-02
+sys_toroidal_CQ_t5ms_nr1_L4,32,euclid,1,0,25.355539901,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,8.027,3.612,-nan,inf
+sys_toroidal_CQ_t5ms_nr1_L4,32,euclid,2,0,25.283259129,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,8.054,3.834,6.24e+01,2.40e-02
+sys_toroidal_CQ_t5ms_nr1_L4,32,euclid,2,0,25.283259129,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,7.988,3.573,-nan,inf
+sys_toroidal_CQ_t5ms_nr1_L4,64,default,1,0,4.334284935,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.732,0.283,1.23e-08,1.40e-11
+sys_toroidal_CQ_t5ms_nr1_L4,64,default,1,0,4.334284935,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.686,0.325,9.79e-09,1.27e-12
+sys_toroidal_CQ_t5ms_nr1_L4,64,default,2,0,4.273892961,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.700,0.279,1.23e-08,1.40e-11
+sys_toroidal_CQ_t5ms_nr1_L4,64,default,2,0,4.273892961,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.659,0.321,9.79e-09,1.27e-12
+sys_toroidal_CQ_t5ms_nr1_L4,64,euclid,1,0,16.741840220,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",57,converged,5.137,1.490,2.83e-08,1.23e-11
+sys_toroidal_CQ_t5ms_nr1_L4,64,euclid,1,0,16.741840220,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,5.159,2.577,1.04e-08,6.08e-13
+sys_toroidal_CQ_t5ms_nr1_L4,64,euclid,2,0,16.824333896,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",57,converged,5.187,1.516,2.83e-08,1.23e-11
+sys_toroidal_CQ_t5ms_nr1_L4,64,euclid,2,0,16.824333896,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,5.190,2.582,1.04e-08,6.08e-13
+sys_toroidal_CQ_tf_nr1_L4,1,default,1,0,54.181364044,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.276,26.079,1.20e+02,9.98e-01
+sys_toroidal_CQ_tf_nr1_L4,1,default,1,0,54.181364044,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.289,26.032,-nan,inf
+sys_toroidal_CQ_tf_nr1_L4,1,default,2,0,53.838233800,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.277,25.925,1.20e+02,9.98e-01
+sys_toroidal_CQ_tf_nr1_L4,1,default,2,0,53.838233800,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.292,25.948,-nan,inf
+sys_toroidal_CQ_tf_nr1_L4,1,euclid,1,0,29.009622786,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",105,converged,2.768,19.330,7.75e-09,1.78e-11
+sys_toroidal_CQ_tf_nr1_L4,1,euclid,1,0,29.009622786,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.728,2.779,8.61e-09,0.00e+00
+sys_toroidal_CQ_tf_nr1_L4,1,euclid,2,0,28.990844513,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",105,converged,2.715,19.385,7.75e-09,1.78e-11
+sys_toroidal_CQ_tf_nr1_L4,1,euclid,2,0,28.990844513,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.737,2.750,8.61e-09,0.00e+00
+sys_toroidal_CQ_tf_nr1_L4,2,default,1,0,30.890176202,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.199,14.483,1.20e+02,9.98e-01
+sys_toroidal_CQ_tf_nr1_L4,2,default,1,0,30.890176202,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.204,14.495,-nan,inf
+sys_toroidal_CQ_tf_nr1_L4,2,default,2,0,30.758200718,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.196,14.398,1.20e+02,9.98e-01
+sys_toroidal_CQ_tf_nr1_L4,2,default,2,0,30.758200718,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.201,14.470,-nan,inf
+sys_toroidal_CQ_tf_nr1_L4,2,euclid,1,0,22.383988188,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",105,converged,1.706,15.001,7.51e-09,9.42e-12
+sys_toroidal_CQ_tf_nr1_L4,2,euclid,1,0,22.383988188,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.682,2.514,7.84e-09,1.35e-12
+sys_toroidal_CQ_tf_nr1_L4,2,euclid,2,0,22.425977297,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",105,converged,1.699,15.040,7.51e-09,9.42e-12
+sys_toroidal_CQ_tf_nr1_L4,2,euclid,2,0,22.425977297,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.711,2.478,7.84e-09,1.35e-12
+sys_toroidal_CQ_tf_nr1_L4,4,default,1,0,17.530906798,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.124,7.926,1.20e+02,9.98e-01
+sys_toroidal_CQ_tf_nr1_L4,4,default,1,0,17.530906798,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.125,7.883,-nan,inf
+sys_toroidal_CQ_tf_nr1_L4,4,default,2,0,17.464018865,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",100,DIVERGED,0.124,7.922,1.20e+02,9.98e-01
+sys_toroidal_CQ_tf_nr1_L4,4,default,2,0,17.464018865,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",0,DIVERGED,0.126,7.921,-nan,inf
+sys_toroidal_CQ_tf_nr1_L4,4,euclid,1,0,12.990492814,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",105,converged,1.025,8.215,7.51e-09,9.42e-12
+sys_toroidal_CQ_tf_nr1_L4,4,euclid,1,0,12.990492814,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.994,1.375,7.84e-09,1.35e-12
+sys_toroidal_CQ_tf_nr1_L4,4,euclid,2,0,13.351359524,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",105,converged,1.021,8.272,7.51e-09,9.42e-12
+sys_toroidal_CQ_tf_nr1_L4,4,euclid,2,0,13.351359524,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.010,1.374,7.84e-09,1.35e-12
+sys_toroidal_CQ_tf_nr1_L4,8,default,1,0,8.064205765,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",28,converged,2.002,1.190,8.29e-09,3.07e-11
+sys_toroidal_CQ_tf_nr1_L4,8,default,1,0,8.064205765,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.986,1.519,7.73e-09,1.49e-11
+sys_toroidal_CQ_tf_nr1_L4,8,default,2,0,8.073259074,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",28,converged,1.996,1.190,8.29e-09,3.07e-11
+sys_toroidal_CQ_tf_nr1_L4,8,default,2,0,8.073259074,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.990,1.520,7.73e-09,1.49e-11
+sys_toroidal_CQ_tf_nr1_L4,8,euclid,1,0,18.818631607,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",9,converged,8.106,0.443,2.01e-08,4.72e-11
+sys_toroidal_CQ_tf_nr1_L4,8,euclid,1,0,18.818631607,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.146,0.727,7.18e-09,1.27e-11
+sys_toroidal_CQ_tf_nr1_L4,8,euclid,2,0,18.732445329,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",9,converged,8.106,0.451,2.01e-08,4.72e-11
+sys_toroidal_CQ_tf_nr1_L4,8,euclid,2,0,18.732445329,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.061,0.726,7.18e-09,1.27e-11
+sys_toroidal_CQ_tf_nr1_L4,16,default,1,0,13.614930459,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",121,converged,1.705,4.186,7.08e-09,1.91e-11
+sys_toroidal_CQ_tf_nr1_L4,16,default,1,0,13.614930459,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.665,4.561,8.40e-09,1.64e-11
+sys_toroidal_CQ_tf_nr1_L4,16,default,2,0,13.575961295,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",121,converged,1.668,4.202,7.08e-09,1.91e-11
+sys_toroidal_CQ_tf_nr1_L4,16,default,2,0,13.575961295,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.659,4.576,8.40e-09,1.64e-11
+sys_toroidal_CQ_tf_nr1_L4,16,euclid,1,0,17.237992097,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,7.188,0.511,1.20e-08,3.41e-11
+sys_toroidal_CQ_tf_nr1_L4,16,euclid,1,0,17.237992097,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.218,0.826,7.80e-09,1.05e-11
+sys_toroidal_CQ_tf_nr1_L4,16,euclid,2,0,17.352003237,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,7.129,0.502,1.20e-08,3.41e-11
+sys_toroidal_CQ_tf_nr1_L4,16,euclid,2,0,17.352003237,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.126,0.804,7.80e-09,1.05e-11
+sys_toroidal_CQ_tf_nr1_L4,32,default,1,0,17.754356084,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",252,converged,1.420,6.153,7.03e-09,2.67e-11
+sys_toroidal_CQ_tf_nr1_L4,32,default,1,0,17.754356084,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.409,7.011,7.83e-09,1.67e-11
+sys_toroidal_CQ_tf_nr1_L4,32,default,2,0,17.653523324,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",252,converged,1.410,6.138,7.03e-09,2.67e-11
+sys_toroidal_CQ_tf_nr1_L4,32,default,2,0,17.653523324,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.388,6.973,7.83e-09,1.67e-11
+sys_toroidal_CQ_tf_nr1_L4,32,euclid,1,0,37.657300576,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",198,converged,7.028,6.925,7.64e-09,2.22e-11
+sys_toroidal_CQ_tf_nr1_L4,32,euclid,1,0,37.657300576,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.045,14.865,8.16e-09,1.31e-12
+sys_toroidal_CQ_tf_nr1_L4,32,euclid,2,0,43.423337430,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",198,converged,7.023,6.861,7.64e-09,2.22e-11
+sys_toroidal_CQ_tf_nr1_L4,32,euclid,2,0,43.423337430,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,6.947,14.877,8.16e-09,1.31e-12
+sys_toroidal_CQ_tf_nr1_L4,64,default,1,0,7.300279933,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.602,0.279,1.15e-08,9.84e-12
+sys_toroidal_CQ_tf_nr1_L4,64,default,1,0,7.300279933,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.591,0.319,7.93e-09,1.23e-11
+sys_toroidal_CQ_tf_nr1_L4,64,default,2,0,4.403400979,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",19,converged,0.599,0.286,1.15e-08,9.84e-12
+sys_toroidal_CQ_tf_nr1_L4,64,default,2,0,4.403400979,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.558,0.320,7.93e-09,1.23e-11
+sys_toroidal_CQ_tf_nr1_L4,64,euclid,1,0,13.009811827,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",35,converged,4.066,0.828,1.21e-08,4.28e-11
+sys_toroidal_CQ_tf_nr1_L4,64,euclid,1,0,13.009811827,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,4.093,1.109,8.60e-09,1.30e-11
+sys_toroidal_CQ_tf_nr1_L4,64,euclid,2,0,12.365115777,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",35,converged,4.066,0.820,1.21e-08,4.28e-11
+sys_toroidal_CQ_tf_nr1_L4,64,euclid,2,0,12.365115777,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,4.011,1.095,8.60e-09,1.30e-11
+sys_toroidal_injection_t0_nr1_L4,1,default,1,0,174.632620845,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",264,converged,0.301,65.610,1.90e-05,4.53e-07
+sys_toroidal_injection_t0_nr1_L4,1,default,1,0,174.632620845,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.319,103.603,2.52e-08,6.53e-10
+sys_toroidal_injection_t0_nr1_L4,1,default,2,0,171.625283398,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",264,converged,0.302,65.766,1.90e-05,4.53e-07
+sys_toroidal_injection_t0_nr1_L4,1,default,2,0,171.625283398,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.314,103.809,2.52e-08,6.53e-10
+sys_toroidal_injection_t0_nr1_L4,1,euclid,1,0,84.118190884,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",206,converged,2.743,37.899,6.67e-09,1.16e-10
+sys_toroidal_injection_t0_nr1_L4,1,euclid,1,0,84.118190884,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.735,39.320,1.89e-09,0.00e+00
+sys_toroidal_injection_t0_nr1_L4,1,euclid,2,0,84.244586586,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",206,converged,2.763,38.064,6.67e-09,1.16e-10
+sys_toroidal_injection_t0_nr1_L4,1,euclid,2,0,84.244586586,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.873,39.132,1.89e-09,0.00e+00
+sys_toroidal_injection_t0_nr1_L4,2,default,1,0,106.564939186,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",264,converged,0.226,40.472,1.90e-05,4.53e-07
+sys_toroidal_injection_t0_nr1_L4,2,default,1,0,106.564939186,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.232,64.111,2.52e-08,6.53e-10
+sys_toroidal_injection_t0_nr1_L4,2,default,2,0,106.757388255,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",264,converged,0.223,40.508,1.90e-05,4.53e-07
+sys_toroidal_injection_t0_nr1_L4,2,default,2,0,106.757388255,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.228,64.254,2.52e-08,6.53e-10
+sys_toroidal_injection_t0_nr1_L4,2,euclid,1,0,66.828960141,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",206,converged,1.779,30.446,7.30e-08,4.78e-09
+sys_toroidal_injection_t0_nr1_L4,2,euclid,1,0,66.828960141,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.784,31.296,1.82e-09,1.61e-12
+sys_toroidal_injection_t0_nr1_L4,2,euclid,2,0,66.827155360,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",206,converged,1.796,30.499,7.30e-08,4.78e-09
+sys_toroidal_injection_t0_nr1_L4,2,euclid,2,0,66.827155360,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.799,31.227,1.82e-09,1.61e-12
+sys_toroidal_injection_t0_nr1_L4,4,default,1,0,57.782808345,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",264,converged,0.149,21.611,1.90e-05,4.53e-07
+sys_toroidal_injection_t0_nr1_L4,4,default,1,0,57.782808345,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.149,34.479,2.52e-08,6.53e-10
+sys_toroidal_injection_t0_nr1_L4,4,default,2,0,57.952434644,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",264,converged,0.150,21.811,1.90e-05,4.53e-07
+sys_toroidal_injection_t0_nr1_L4,4,default,2,0,57.952434644,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.147,34.479,2.52e-08,6.53e-10
+sys_toroidal_injection_t0_nr1_L4,4,euclid,1,0,37.283815686,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",206,converged,1.060,16.475,7.30e-08,4.78e-09
+sys_toroidal_injection_t0_nr1_L4,4,euclid,1,0,37.283815686,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.058,17.282,1.82e-09,1.61e-12
+sys_toroidal_injection_t0_nr1_L4,4,euclid,2,0,37.496964028,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",206,converged,1.063,16.690,7.30e-08,4.78e-09
+sys_toroidal_injection_t0_nr1_L4,4,euclid,2,0,37.496964028,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.054,17.311,1.82e-09,1.61e-12
+sys_toroidal_injection_t0_nr1_L4,8,default,1,0,8.909918418,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",22,converged,2.495,0.957,2.47e-06,5.41e-09
+sys_toroidal_injection_t0_nr1_L4,8,default,1,0,8.909918418,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.470,1.588,4.16e-09,5.21e-11
+sys_toroidal_injection_t0_nr1_L4,8,default,2,0,9.005016266,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",22,converged,2.557,0.961,2.47e-06,5.41e-09
+sys_toroidal_injection_t0_nr1_L4,8,default,2,0,9.005016266,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.542,1.571,4.16e-09,5.21e-11
+sys_toroidal_injection_t0_nr1_L4,8,euclid,1,0,20.484205801,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,8.722,0.641,1.35e-06,1.12e-08
+sys_toroidal_injection_t0_nr1_L4,8,euclid,1,0,20.484205801,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.696,0.952,4.70e-08,2.85e-10
+sys_toroidal_injection_t0_nr1_L4,8,euclid,2,0,20.424298278,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",13,converged,8.733,0.636,1.35e-06,1.12e-08
+sys_toroidal_injection_t0_nr1_L4,8,euclid,2,0,20.424298278,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,8.709,0.951,4.70e-08,2.85e-10
+sys_toroidal_injection_t0_nr1_L4,16,default,1,0,7.366291553,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",25,converged,2.045,0.707,2.75e-06,7.16e-08
+sys_toroidal_injection_t0_nr1_L4,16,default,1,0,7.366291553,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.041,1.067,2.89e-09,6.53e-11
+sys_toroidal_injection_t0_nr1_L4,16,default,2,0,7.351081318,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",25,converged,2.034,0.704,2.75e-06,7.16e-08
+sys_toroidal_injection_t0_nr1_L4,16,default,2,0,7.351081318,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,2.030,1.081,2.89e-09,6.53e-11
+sys_toroidal_injection_t0_nr1_L4,16,euclid,1,0,17.859892129,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",12,converged,7.596,0.478,5.43e-05,2.81e-07
+sys_toroidal_injection_t0_nr1_L4,16,euclid,1,0,17.859892129,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.574,0.724,9.04e-08,5.05e-10
+sys_toroidal_injection_t0_nr1_L4,16,euclid,2,0,17.886382253,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",12,converged,7.615,0.481,5.43e-05,2.81e-07
+sys_toroidal_injection_t0_nr1_L4,16,euclid,2,0,17.886382253,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.589,0.714,9.04e-08,5.05e-10
+sys_toroidal_injection_t0_nr1_L4,32,default,1,0,6.709046230,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",33,converged,1.773,0.624,2.12e-05,1.18e-07
+sys_toroidal_injection_t0_nr1_L4,32,default,1,0,6.709046230,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.673,0.877,5.04e-09,2.95e-11
+sys_toroidal_injection_t0_nr1_L4,32,default,2,0,6.553281388,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",33,converged,1.666,0.638,2.12e-05,1.18e-07
+sys_toroidal_injection_t0_nr1_L4,32,default,2,0,6.553281388,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,1.648,0.880,5.04e-09,2.95e-11
+sys_toroidal_injection_t0_nr1_L4,32,euclid,1,0,29.748942956,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",188,converged,7.416,6.622,2.04e-06,4.23e-09
+sys_toroidal_injection_t0_nr1_L4,32,euclid,1,0,29.748942956,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.381,6.532,1.77e-08,8.76e-11
+sys_toroidal_injection_t0_nr1_L4,32,euclid,2,0,29.541860869,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",188,converged,7.348,6.521,2.04e-06,4.23e-09
+sys_toroidal_injection_t0_nr1_L4,32,euclid,2,0,29.541860869,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,7.328,6.557,1.77e-08,8.76e-11
+sys_toroidal_injection_t0_nr1_L4,64,default,1,0,4.022195055,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,0.651,0.195,3.08e-06,4.13e-08
+sys_toroidal_injection_t0_nr1_L4,64,default,1,0,4.022195055,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.636,0.189,1.94e-08,4.94e-11
+sys_toroidal_injection_t0_nr1_L4,64,default,2,0,3.964961749,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",14,converged,0.654,0.193,3.08e-06,4.13e-08
+sys_toroidal_injection_t0_nr1_L4,64,default,2,0,3.964961749,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,0.613,0.183,1.94e-08,4.94e-11
+sys_toroidal_injection_t0_nr1_L4,64,euclid,1,0,18.000914281,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",97,converged,4.378,2.586,1.19e-02,1.68e-06
+sys_toroidal_injection_t0_nr1_L4,64,euclid,1,0,18.000914281,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,4.350,4.318,1.72e-08,1.10e-10
+sys_toroidal_injection_t0_nr1_L4,64,euclid,2,0,17.836407945,diag,"BJ(r,1/blk) AMG V-cyc / GMRES",97,converged,4.350,2.575,1.19e-02,1.68e-06
+sys_toroidal_injection_t0_nr1_L4,64,euclid,2,0,17.836407945,diag,"BJ(r,1/blk) GMRES+AMG / FGMRES",2,converged,4.318,4.222,1.72e-08,1.10e-10

@@ -13,16 +13,19 @@
 #
 # Cluster version of run_compare_solvers_nr1.sh: serial comparison of
 # LU (direct) vs AMG + GMRES vs ILU + GMRES on the kinetic system
-# (f_hot, f_re) of the snapshots with ONE radial cell.
+# (f_hot, f_re) of the snapshots, toroidal geometry (trapping) and radial
+# transport (kinetic_snapshot_toroidal.py defaults: DBB=1e-4, A_r = 10 E),
+# with NR radial cells (default 1).
 #
-# For each snapshot, in $DATADIR/sys_toroidal_<snapshot>_nr1_L<LEVEL>:
+# For each snapshot, in $DATADIR/sys_toroidal_<snapshot>_nr<NR>_L<LEVEL>:
 #   0. (if missing) the settings file is written by
-#      examples/kinetic_snapshot_toroidal.py with NR=1;
+#      examples/kinetic_snapshot_toroidal.py with NR=$NR;
 #   1. dreami, 1 rank, -dream_kinetic_only -dream_save_system: dumps the
 #      matrix, rhs, reference solution and petsc_block_sizes.txt;
 #   2. testkineticsolversserial -solvers $SOLVERS on them (1 rank).
 # Results: solvers.log in each folder, all of them in
-# $DATADIR/compare_solvers_nr1_L<LEVEL>.txt.
+# $DATADIR/compare_solvers_nr<NR>_L<LEVEL>.txt. With NR > 1 these folders are
+# also the input of run_scaling_nr1_cluster.sh NR=<NR> (radius-parallel scan).
 #
 # Build testkineticsolversserial first (make testkineticsolversserial in
 # $DREAM_ROOT/build). Submit from the Runaway_Solver folder with
@@ -34,6 +37,8 @@
 #   $ SKIP_DUMP=1 SOLVERS=lu,amg,ilu,bjamgeu sbatch run_compare_solvers_nr1_cluster.sh
 #   $ EXTRA="-lu_pc_factor_mat_solver_type petsc" sbatch run_compare_solvers_nr1_cluster.sh
 #     (the LU uses MUMPS by default when PETSc has it)
+#   $ NR=44 LEVEL=2 sbatch --mem=0 --time=12:00:00 run_compare_solvers_nr1_cluster.sh
+#     (44 radii: no LU by default, dreami needs much more memory)
 #
 # Environment for the settings (passed to kinetic_snapshot_toroidal.py):
 # NT_CQ, CQ_FULL_DT, DT_TARGET, ADV, ... (default: CQ = one step of ~1e-7 s).
@@ -60,7 +65,14 @@ export MKL_NUM_THREADS=1
 export MKL_DYNAMIC=FALSE
 
 LEVEL=${LEVEL:-1}
-SOLVERS=${SOLVERS:-lu,amg,ilu}
+NR=${NR:-1}
+if (( NR == 1 )); then
+    SOLVERS=${SOLVERS:-lu,amg,ilu}
+else
+    # several radii: block Jacobi over the radius (MIRadialBJ and variants)
+    # vs the global AMG / ILU; no LU (far too big without MUMPS)
+    SOLVERS=${SOLVERS:-bjamgeu,bjamg,bjilu,amg,ilu}
+fi
 SKIP_DUMP=${SKIP_DUMP:-0}
 PARALLEL=${PARALLEL:-0}
 EXTRA=${EXTRA:-}
@@ -81,9 +93,9 @@ done
 
 # settings file of a snapshot (CQ ones carry a _dt<step> tag)
 settings_of() {
-    ls $DATADIR/dream_settings_toroidal_${1}_nr1_L${LEVEL}.h5 \
-       $DATADIR/dream_settings_toroidal_${1}_nr1_dt*_L${LEVEL}.h5 \
-       $DATADIR/dream_settings_toroidal_${1}_nr1_nt*_L${LEVEL}.h5 2>/dev/null | head -1
+    ls $DATADIR/dream_settings_toroidal_${1}_nr${NR}_L${LEVEL}.h5 \
+       $DATADIR/dream_settings_toroidal_${1}_nr${NR}_dt*_L${LEVEL}.h5 \
+       $DATADIR/dream_settings_toroidal_${1}_nr${NR}_nt*_L${LEVEL}.h5 2>/dev/null | head -1
 }
 
 # ---- settings: write the missing ones ----
@@ -96,20 +108,20 @@ if [ -z "$SNAPSHOTS" ]; then
 fi
 for snap in $SNAPSHOTS; do
     if [ -z "$(settings_of $snap)" ]; then
-        echo "Writing the Nr = 1 settings of $snap (LEVEL $LEVEL)"
-        NR=1 LEVEL=$LEVEL SNAPSHOT=$snap KINETIC_OUT_DIR=$DATADIR python3 $GEN > /dev/null \
+        echo "Writing the Nr = $NR settings of $snap (LEVEL $LEVEL)"
+        NR=$NR LEVEL=$LEVEL SNAPSHOT=$snap KINETIC_OUT_DIR=$DATADIR python3 $GEN > /dev/null \
             || echo "  kinetic_snapshot_toroidal.py failed for $snap" >&2
     fi
 done
 
-SUMMARY=$DATADIR/compare_solvers_nr1_L${LEVEL}.txt
-echo "Nr = 1, LEVEL = $LEVEL, solvers $SOLVERS  $EXTRA   (job ${SLURM_JOB_ID:-local})" | tee $SUMMARY
+SUMMARY=$DATADIR/compare_solvers_nr${NR}_L${LEVEL}.txt
+echo "Nr = $NR, LEVEL = $LEVEL, solvers $SOLVERS  $EXTRA   (job ${SLURM_JOB_ID:-local})" | tee $SUMMARY
 
 # ---- one snapshot: dump + compare; writes $dir/summary.txt ----
 run_snapshot() {
     local snap=$1
     local settings=$(settings_of $snap)
-    local dir=$DATADIR/sys_toroidal_${snap}_nr1_L${LEVEL}
+    local dir=$DATADIR/sys_toroidal_${snap}_nr${NR}_L${LEVEL}
     mkdir -p $dir
     cd $dir
     : > summary.txt
@@ -154,7 +166,7 @@ wait
 
 # collect, in snapshot order
 for snap in $SNAPSHOTS; do
-    cat $DATADIR/sys_toroidal_${snap}_nr1_L${LEVEL}/summary.txt
+    cat $DATADIR/sys_toroidal_${snap}_nr${NR}_L${LEVEL}/summary.txt
 done > $SUMMARY.body
 (( PARALLEL )) && cat $SUMMARY.body
 cat $SUMMARY.body >> $SUMMARY
